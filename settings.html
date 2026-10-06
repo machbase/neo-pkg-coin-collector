@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coin Collector — Settings</title>
+<link rel="stylesheet" href="lib/graphite.css">
+<style>
+  /* 공통 톤은 lib/graphite.css */
+  :root { --ok: var(--tone-hover); }
+  .g-page { padding-bottom: 96px; gap: 20px; }
+
+  /* 지금 받는 것 */
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .stats .g-tile { display: flex; flex-direction: column; gap: 4px; }
+
+  /* 도구 줄 */
+  .tools { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; align-items: center; }
+  input[type=search], input[type=number] { background: rgba(255, 255, 255, .06); color: var(--text); border: 1px solid transparent; border-radius: 4px; padding: 6px 10px; font: inherit; font-size: 13px; outline: none; }
+  input[type=search]:focus, input[type=number]:focus { border-color: var(--tone-soft); }
+  input[type=search] { width: 220px; }
+  input[type=number] { width: 60px; }
+  .grow { flex: 1; }
+  .tools .lbl { font-size: 12px; color: var(--dim); }
+
+  /* 표 */
+  .wrap { max-height: calc(100vh - 360px); min-height: 300px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--surface); color: var(--dim); font-weight: 500; font-size: 11.5px; z-index: 1; }
+  th.r, td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  th.c, td.c { text-align: center; }
+  td.r { color: var(--muted); }
+  tr.sel td { background: rgba(109, 139, 255, .05); }
+  tbody tr:hover td { background: rgba(255, 255, 255, .03); }
+  td.coin b { font-size: 13px; font-weight: 500; }
+  td.coin small { color: var(--dim); margin-left: 4px; font-size: 11px; }
+  .tag { display: inline-block; font-size: 10.5px; padding: 0 6px; border-radius: 4px; background: rgba(255, 255, 255, .06); color: var(--muted); margin-left: 6px; }
+  .tag.warn { color: #fca5a5; background: var(--bad-faint); }
+  input[type=checkbox] { width: 14px; height: 14px; accent-color: var(--tone); cursor: pointer; vertical-align: -2px; }
+  input[type=checkbox]:disabled { cursor: default; opacity: .2; }
+  .colhead { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
+  .colhead i { font-style: normal; font-size: 10.5px; }
+  .colhead i a { color: var(--dim); text-decoration: none; }
+  .colhead i a:hover { color: var(--tone-hover); }
+  .spot, .fut { color: var(--muted); }
+  .empty { padding: 40px; text-align: center; color: var(--dim); }
+  .notes { font-size: 12px; color: var(--dim); line-height: 1.8; }
+  .notes b { color: var(--muted); font-weight: 500; }
+  .notes code { font-size: 11.5px; color: var(--muted); }
+
+  /* 하단 저장 줄 */
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: rgba(30, 30, 30, .96); backdrop-filter: blur(6px); border-top: 1px solid var(--line); padding: 10px 24px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; z-index: 5; }
+  .bar .est { display: flex; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--dim); align-items: baseline; }
+  .bar .est b { color: var(--text); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; margin: 0 2px; }
+  .bar .msg { font-size: 12px; color: var(--muted); }
+  .bar .msg.err { color: #fca5a5; }
+  .bar .msg.ok { color: var(--tone-hover); }
+  .dirty { color: var(--tone-hover); }
+</style>
+</head>
+<body>
+<header class="g-top">
+  <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>코인 수집기</h1>
+  <span class="desc">바이낸스 USDT 마켓에서 받을 코인과 데이터를 골라요</span>
+  <nav class="g-tabs">
+    <a href="main.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg> DB 인사이드</a>
+    <a href="whales.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg> 고래</a>
+    <a href="game.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/></svg> 모의투자</a>
+    <a href="settings.html" class="on"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg> 수집 설정</a>
+  </nav>
+</header>
+
+<main class="g-page">
+  <section>
+    <div class="g-head"><h2>지금 받는 것</h2><small id="stateMeta">불러오는 중…</small></div>
+    <div class="stats">
+      <div class="g-tile"><div class="g-key">코인<code id="kSrc">-</code></div><div class="g-value" id="kCoins">-</div><div class="g-sub" id="kCoinsSub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key">현물<code>BINANCE.*</code></div><div class="g-value" id="kSpot">-</div><div class="g-sub" id="kSpotSub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key">선물<code>BINANCE_F.*</code></div><div class="g-value" id="kFut">-</div><div class="g-sub" id="kFutSub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key">수집기<span class="g-pill" id="kSvc">-</span></div><div class="g-value" id="kApplied">-</div><div class="g-sub" id="kAppliedSub">&nbsp;</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>코인 고르기</h2><small>바이낸스 USDT 마켓 · 거래대금 순</small></div>
+    <div class="g-card">
+    <div class="tools">
+      <input type="search" id="q" placeholder="코인 검색 (BTC, pepe …)" autocomplete="off">
+      <div class="g-seg" id="show"><button data-v="all" class="on">전체</button><button data-v="sel">선택한 것</button><button data-v="spot">현물 있음</button><button data-v="fut">선물 있음</button></div>
+      <span class="grow"></span>
+      <span class="lbl">거래대금 상위</span><input type="number" id="topN" value="20" min="1" max="500"><button class="g-btn" id="topBtn">개 추가</button>
+      <button class="g-btn" id="noneBtn">모두 해제</button>
+      <button class="g-btn" id="resetBtn" title="저장된 설정을 지우고 기본 50개 구성으로">기본 구성으로</button>
+    </div>
+    <div class="wrap">
+      <table>
+        <thead><tr>
+          <th class="c" style="width:44px">수집</th>
+          <th>코인</th>
+          <th class="r">24시간 거래대금</th>
+          <th class="r" title="24시간 체결 건수 ÷ 86,400">초당 체결</th>
+          <th class="c"><span class="colhead"><span class="spot">현물 체결</span><i><a href="#" data-all="spot" class="muted">전부</a></i></span></th>
+          <th class="c"><span class="colhead"><span class="spot">현물 호가</span><i><a href="#" data-all="spotDepth" class="muted">전부</a></i></span></th>
+          <th class="c"><span class="colhead"><span class="fut">선물 체결</span><i><a href="#" data-all="futures" class="muted">전부</a></i></span></th>
+          <th class="c"><span class="colhead"><span class="fut">선물 호가</span><i><a href="#" data-all="futuresDepth" class="muted">전부</a></i></span></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="empty">바이낸스 종목 목록을 불러오는 중…</td></tr></tbody>
+      </table>
+    </div>
+    </div>
+  </section>
+  <div class="notes">
+    체결은 <b>CC_TICK</b>(분·시 롤업 포함), 호가 변화는 <b>CC_BOOK</b> 에 쌓여요 · 태그 <code>BINANCE.BTCUSDT</code>(현물) · <code>BINANCE_F.BTCUSDT</code>(선물)<br>
+    호가는 체결보다 훨씬 많아요 — 현물은 코인당 초당 약 40행, 선물 BTC·ETH 는 1,000행 넘게 · 1000PEPE 같은 선물 계약은 현물 단위로 바꿔 저장<br>
+    저장하면 2초 안에 새 목록으로 받기 시작해요 · 뺀 코인의 지난 데이터는 그대로 남아요
+  </div>
+</main>
+
+<div class="bar">
+  <div class="est">
+    <span>코인 <b id="eCoins">0</b></span>
+    <span>스트림 <b id="eStreams">0</b> <span id="eConns"></span></span>
+    <span>예상 체결 <b id="eTrades">0</b>/초</span>
+    <span>예상 호가 <b id="eBook">0</b>/초 <span title="현물 코인당 40, 선물 코인당 300 으로 어림">(어림)</span></span>
+  </div>
+  <span class="grow"></span>
+  <span class="msg" id="msg"></span>
+  <button class="g-btn" id="undoBtn" disabled>되돌리기</button>
+  <button class="g-btn primary" id="saveBtn" disabled>저장하고 적용</button>
+</div>
+
+<script src="lib/markets.js"></script>
+<script>
+'use strict';
+const API = 'cgi-bin/api/markets';
+const M = window.COIN_MARKETS;
+const nf = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const usd = (v) => !v ? '-' : v >= 1e9 ? '$' + (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(0) + 'K' : '$' + Math.round(v);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const SPOT_DEPTH_RATE = 40, FUT_DEPTH_RATE = 300;   // 호가 행/초 어림 (2026-09-29 실측: 현물 50개 2,000~2,200, 선물 BTC 1,017·ETH 1,556)
+
+// 바이낸스에서 받은 마켓 목록: coin → { coin, spot: { vol, tps } | null, fut: { symbol, mult, vol, tps } | null }
+const universe = {};
+let listError = '';
+// 저장된 설정과 고치는 중인 설정: coin → { coin, spot, spotDepth, futures, futuresDepth, futuresSymbol, mult }
+let saved = {}, draft = {};
+let server = null;   // 마지막 GET 응답
+const ui = { q: '', show: 'all' };
+
+// ── 바이낸스 목록 (브라우저에서 바로 — 바이낸스 공개 API 는 CORS 를 연다) ──
+async function loadUniverse() {
+  const get = (u) => fetch(u, { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error(u.split('/')[2] + ' ' + r.status); return r.json(); });
+  const [spot, finfo, ftick] = await Promise.all([
+    get('https://api.binance.com/api/v3/ticker/24hr?type=MINI&symbolStatus=TRADING'),   // 약 400KB
+    get('https://fapi.binance.com/fapi/v1/exchangeInfo'),                                // 약 1MB — 무기한·상장 여부, 1000배 계약
+    get('https://fapi.binance.com/fapi/v1/ticker/24hr'),                                 // 약 300KB — 선물 거래대금·체결 수
+  ]);
+  const spotSet = {};
+  for (const t of spot) {
+    if (!/USDT$/.test(t.symbol)) continue;
+    const coin = t.symbol.slice(0, -4);
+    if (!/^[A-Z0-9]{1,24}$/.test(coin)) continue;
+    spotSet[coin] = true;
+    universe[coin] = { coin: coin, spot: { vol: Number(t.quoteVolume) || 0, tps: (Number(t.count) || 0) / 86400 }, fut: null };
+  }
+  const ft = {};
+  for (const t of ftick) ft[t.symbol] = t;
+  for (const s of finfo.symbols) {
+    if (s.contractType !== 'PERPETUAL' || s.status !== 'TRADING' || s.quoteAsset !== 'USDT') continue;
+    // 1000PEPE → PEPE ×1000. 단, 현물에 그 이름(1000SATS 등) 그대로 있으면 그대로 둔다
+    let coin = s.baseAsset, mult = 1;
+    const m = /^(10+)([A-Z0-9]+)$/.exec(s.baseAsset);
+    if (m && !spotSet[s.baseAsset] && spotSet[m[2]]) { coin = m[2]; mult = Number(m[1]); }
+    if (!/^[A-Z0-9]{1,24}$/.test(coin) || !/^[A-Z0-9]{2,32}USDT$/.test(s.symbol)) continue;
+    const t = ft[s.symbol] || {};
+    const u = universe[coin] = universe[coin] || { coin: coin, spot: null, fut: null };
+    u.fut = { symbol: s.symbol, mult: mult, vol: Number(t.quoteVolume) || 0, tps: (Number(t.count) || 0) / 86400 };
+  }
+}
+
+// ── 서버 설정 ──
+async function loadConfig() {
+  const r = await fetch(API, { cache: 'no-store' }).then((x) => x.json());
+  if (!r.ok) throw new Error(r.reason);
+  server = r.data;
+  saved = {};
+  for (const c of server.coins) saved[c.coin] = Object.assign({}, c);
+  draft = JSON.parse(JSON.stringify(saved));
+}
+
+const vol = (u) => (u.spot ? u.spot.vol : 0) + (u.fut ? u.fut.vol : 0);
+function rowsToShow() {
+  // 저장돼 있지만 바이낸스 목록에 없는 코인(상장 폐지·이름 변경)도 보여 준다 — 그래야 뺄 수 있다
+  const all = Object.assign({}, universe);
+  for (const c in draft) if (!all[c]) all[c] = { coin: c, spot: null, fut: null, missing: true };
+  for (const c in saved) if (!all[c]) all[c] = { coin: c, spot: null, fut: null, missing: true };
+  const q = ui.q.trim().toUpperCase();
+  return Object.values(all).filter((u) => {
+    if (q && u.coin.indexOf(q) < 0) return false;
+    if (ui.show === 'sel') return !!draft[u.coin];
+    if (ui.show === 'spot') return !!u.spot;
+    if (ui.show === 'fut') return !!u.fut;
+    return true;
+  }).sort((a, b) => (draft[b.coin] ? 1 : 0) - (draft[a.coin] ? 1 : 0) || vol(b) - vol(a) || a.coin.localeCompare(b.coin));
+}
+
+const MAX_ROWS = 300;   // 한 번에 그리는 행 — 검색으로 좁힌다
+function render() {
+  const list = rowsToShow();
+  const tb = document.getElementById('rows');
+  if (!list.length) {
+    tb.innerHTML = `<tr><td colspan="8" class="empty">${listError ? '바이낸스 목록을 못 불러왔어요 — ' + esc(listError) : '맞는 코인이 없어요'}</td></tr>`;
+  } else {
+    const box = (coin, key, enabled, on) => `<input type="checkbox" data-coin="${coin}" data-k="${key}" ${on ? 'checked' : ''} ${enabled ? '' : 'disabled'}>`;
+    tb.innerHTML = list.slice(0, MAX_ROWS).map((u) => {
+      const d = draft[u.coin];
+      const fut = u.fut || (d && d.futures ? { symbol: d.futuresSymbol, mult: d.mult } : null);
+      const spotOk = !!u.spot || !!(d && d.spot);
+      const tps = (u.spot ? u.spot.tps : 0) + (u.fut ? u.fut.tps : 0);
+      const note = (u.missing ? '<span class="tag warn">목록에 없음</span>' : '')
+        + (fut && fut.mult > 1 ? `<span class="tag" title="선물 심볼 ${esc(fut.symbol)}">선물 ×${nf.format(fut.mult)}</span>` : '')
+        + (!u.spot && u.fut ? '<span class="tag">선물만</span>' : '');
+      return `<tr class="${d ? 'sel' : ''}"><td class="c">${box(u.coin, 'sel', true, !!d)}</td>`
+        + `<td class="coin"><b>${esc(u.coin)}</b><small>USDT</small>${note}</td>`
+        + `<td class="r">${usd(vol(u))}</td><td class="r">${tps ? nf.format(Math.round(tps)) : '-'}</td>`
+        + `<td class="c">${box(u.coin, 'spot', spotOk, d && d.spot)}</td>`
+        + `<td class="c">${box(u.coin, 'spotDepth', spotOk && d && d.spot, d && d.spotDepth)}</td>`
+        + `<td class="c">${box(u.coin, 'futures', !!fut, d && d.futures)}</td>`
+        + `<td class="c">${box(u.coin, 'futuresDepth', !!fut && d && d.futures, d && d.futuresDepth)}</td></tr>`;
+    }).join('') + (list.length > MAX_ROWS ? `<tr><td colspan="8" class="empty">그 밖에 ${list.length - MAX_ROWS}개 — 검색으로 좁혀 보세요</td></tr>` : '');
+  }
+  renderBar();
+}
+
+/** 새로 고른 코인의 기본: 있는 시장의 체결만 (호가는 양이 많아 직접 켠다) */
+function pick(coin) {
+  const u = universe[coin] || {};
+  draft[coin] = { coin: coin, spot: !!u.spot, spotDepth: false, futures: !!u.fut, futuresDepth: false,
+    futuresSymbol: u.fut ? u.fut.symbol : '', mult: u.fut ? u.fut.mult : 1 };
+}
+
+function setFlag(coin, k, on) {
+  if (k === 'sel') { if (on) pick(coin); else delete draft[coin]; return; }
+  if (!draft[coin]) { pick(coin); draft[coin].spot = draft[coin].futures = false; }
+  const d = draft[coin], u = universe[coin] || {};
+  if (k === 'futures' && on && u.fut) { d.futuresSymbol = u.fut.symbol; d.mult = u.fut.mult; }
+  d[k] = on;
+  if (!d.spot) d.spotDepth = false;
+  if (!d.futures) d.futuresDepth = false;
+  if (on && k === 'spotDepth') d.spot = true;
+  if (on && k === 'futuresDepth') d.futures = true;
+  if (!d.spot && !d.futures) delete draft[coin];   // 받을 것이 없으면 선택 해제
+}
+
+document.getElementById('rows').addEventListener('change', (e) => {
+  const t = e.target;
+  if (!t.dataset.coin) return;
+  setFlag(t.dataset.coin, t.dataset.k, t.checked);
+  render();
+});
+
+// 열 머리의 "전부": 보이는 행 중 선택한 코인에 그 항목을 켜거나(하나라도 꺼져 있으면) 끈다
+document.querySelectorAll('[data-all]').forEach((a) => a.addEventListener('click', (e) => {
+  e.preventDefault();
+  const k = a.dataset.all;
+  const list = rowsToShow().filter((u) => draft[u.coin] && (k.indexOf('spot') === 0 ? (u.spot || draft[u.coin].spot) : (u.fut || draft[u.coin].futures)));
+  const on = list.some((u) => !draft[u.coin][k]);
+  for (const u of list) setFlag(u.coin, k, on);
+  render();
+}));
+
+// ── 예상 부하 · 저장 ──
+function draftList() { return Object.values(draft).sort((a, b) => vol(universe[b.coin] || {}) - vol(universe[a.coin] || {})); }
+// 서버와 같은 규칙(normalize)으로 정리한 뒤 비교한다 — 꺼 둔 선물의 심볼처럼 저장되지 않는 값 차이는 변경이 아니다
+function canon(map) {
+  const list = Object.keys(map).sort().map((c) => map[c]);
+  try { return JSON.stringify(M.normalize(list)); } catch (_) { return JSON.stringify(list); }
+}
+function isDirty() { return canon(saved) !== canon(draft); }
+function renderBar() {
+  const list = draftList();
+  const s = M.summary(list);
+  let trades = 0;
+  for (const c of list) {
+    const u = universe[c.coin] || {};
+    if (c.spot && u.spot) trades += u.spot.tps;
+    if (c.futures && u.fut) trades += u.fut.tps;
+  }
+  const conns = Math.ceil((s.spot + s.spotDepth) / 200) + Math.ceil((s.futures + s.futuresDepth) / 200);
+  document.getElementById('eCoins').textContent = nf.format(s.coins);
+  document.getElementById('eStreams').textContent = nf.format(s.streams);
+  document.getElementById('eConns').textContent = '(웹소켓 ' + conns + '개)';
+  document.getElementById('eTrades').textContent = nf.format(Math.round(trades));
+  document.getElementById('eBook').textContent = nf.format(s.spotDepth * SPOT_DEPTH_RATE + s.futuresDepth * FUT_DEPTH_RATE);
+  const dirty = isDirty();
+  document.getElementById('saveBtn').disabled = !dirty || !s.coins || saving;
+  document.getElementById('undoBtn').disabled = !dirty || saving;
+  if (dirty && !saving) setMsg('<span class="dirty">저장하지 않은 변경이 있어요</span>' + (s.coins ? '' : ' — 하나 이상 골라야 저장돼요'));
+  else if (!saving && !msgSticky) setMsg('');
+}
+let msgSticky = false;
+function setMsg(html, cls, sticky) {
+  const el = document.getElementById('msg');
+  el.className = 'msg' + (cls ? ' ' + cls : '');
+  el.innerHTML = html;
+  msgSticky = !!sticky;
+}
+
+let saving = false;
+async function post(body) {
+  saving = true; renderBar();
+  setMsg('저장하는 중…');
+  try {
+    const r = await fetch(API, { method: 'POST', body: JSON.stringify(body) }).then((x) => x.json());
+    if (!r.ok) throw new Error(r.reason);
+    server = r.data;
+    saved = {};
+    for (const c of server.coins) saved[c.coin] = Object.assign({}, c);
+    draft = JSON.parse(JSON.stringify(saved));
+    saving = false;
+    render();
+    waitApplied(server.updatedAt);
+  } catch (e) {
+    saving = false; renderBar();
+    setMsg('저장 실패: ' + esc(e.message || e), 'err', true);
+  }
+}
+document.getElementById('saveBtn').onclick = () => post({ coins: draftList() });
+document.getElementById('undoBtn').onclick = () => { draft = JSON.parse(JSON.stringify(saved)); msgSticky = false; render(); };
+document.getElementById('resetBtn').onclick = () => {
+  if (!confirm('저장된 수집 설정을 지우고 기본 구성(50개 코인, 현물 체결·호가 + 선물 체결, BTC·ETH 선물 호가)으로 돌아갈까요?')) return;
+  post({ reset: true });
+};
+document.getElementById('noneBtn').onclick = () => { draft = {}; render(); };
+document.getElementById('topBtn').onclick = () => {
+  const n = Math.max(1, Math.min(500, parseInt(document.getElementById('topN').value, 10) || 0));
+  const top = Object.values(universe).sort((a, b) => vol(b) - vol(a)).slice(0, n);
+  for (const u of top) if (!draft[u.coin]) pick(u.coin);
+  render();
+};
+
+// 저장 뒤 수집기가 새 목록으로 다시 열었는지 — status.json 의 markets.appliedAt 이 저장 시각보다 뒤면 반영된 것
+async function waitApplied(savedAt) {
+  const t0 = Date.now();
+  setMsg('저장했어요 — 수집기가 새 목록을 읽기를 기다리는 중…', '', true);
+  while (Date.now() - t0 < 20000) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const r = await fetch(API, { cache: 'no-store' }).then((x) => x.json());
+      if (r.ok) { server = r.data; renderState(); }
+      const a = r.ok && r.data.applied;
+      if (a && a.appliedAt && (!savedAt || a.appliedAt >= savedAt)) {
+        setMsg(`수집기에 반영됐어요 — 코인 ${nf.format(a.coins)}개 · 웹소켓 ${a.connections}개`, 'ok', true);
+        return;
+      }
+      if (a && !a.running) { setMsg('저장했어요. 수집기가 멈춰 있어요 — 시작하면 새 목록으로 받아요 (사이드 패널).', '', true); return; }
+    } catch (_) {}
+  }
+  setMsg('저장했지만 수집기 반영을 아직 확인하지 못했어요. 사이드 패널에서 수집기 상태를 보세요.', 'err', true);
+}
+
+function renderState() {
+  if (!server) return;
+  const s = server.summary, a = server.applied || {};
+  const set = (id, v) => { document.getElementById(id).innerHTML = v; };
+  set('stateMeta', server.updatedAt ? '저장 ' + esc(new Date(server.updatedAt).toLocaleString()) : '아직 저장한 적 없음 — 기본 구성');
+  set('kSrc', server.source === 'file' ? 'markets.json' : '기본 구성');
+  set('kCoins', nf.format(s.coins) + '<small>개</small>');
+  set('kCoinsSub', `스트림 ${nf.format(s.streams)}개`);
+  set('kSpot', s.spot + '<small>코인</small>'); set('kSpotSub', `호가도 받는 코인 <b>${s.spotDepth}</b>`);
+  set('kFut', s.futures + '<small>코인</small>'); set('kFutSub', `호가도 받는 코인 <b>${s.futuresDepth}</b>`);
+  const pill = document.getElementById('kSvc');
+  pill.className = 'g-pill' + (a.running ? ' ok' : '');
+  pill.textContent = a.running ? '실행 중' : '멈춤';
+  set('kApplied', a.appliedAt ? nf.format(a.coins) + '<small>개 받는 중</small>' : '-');
+  set('kAppliedSub', a.appliedAt ? `${new Date(a.appliedAt).toLocaleTimeString()} 에 적용` + (a.coins !== s.coins ? ' · <span style="color:#fca5a5">저장한 것과 달라요</span>' : '') : '수집기를 켜면 보여요');
+  if (server.error) set('kAppliedSub', `<span style="color:#fca5a5">${esc(server.error)}</span>`);
+}
+
+// 도구
+document.getElementById('q').addEventListener('input', (e) => { ui.q = e.target.value; render(); });
+document.querySelectorAll('#show button').forEach((b) => b.onclick = () => {
+  ui.show = b.dataset.v;
+  document.querySelectorAll('#show button').forEach((x) => x.classList.toggle('on', x === b));
+  render();
+});
+window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+(async function init() {
+  try { await loadConfig(); renderState(); } catch (e) {
+    document.getElementById('stateMeta').innerHTML = '<span style="color:#fca5a5">설정을 못 읽었어요: ' + esc(e.message || e) + '</span>';
+  }
+  try { await loadUniverse(); } catch (e) { listError = String(e.message || e); }
+  if (listError) setMsg('바이낸스 목록을 못 불러왔어요 (' + esc(listError) + ') — 저장된 코인만 보여요.', 'err', true);
+  render();
+})();
+</script>
+</body>
+</html>

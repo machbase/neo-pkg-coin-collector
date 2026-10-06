@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0e1116"/>
+  <!-- 데이터베이스 (TAG 테이블) -->
+  <path d="M14 38v12c0 3.3 8 6 18 6s18-2.7 18-6V38" fill="#13233d" stroke="#60a5fa" stroke-width="3"/>
+  <path d="M14 44c0 3.3 8 6 18 6s18-2.7 18-6" fill="none" stroke="#60a5fa" stroke-width="2.4" opacity=".55"/>
+  <ellipse cx="32" cy="38" rx="18" ry="6" fill="#1b3358" stroke="#60a5fa" stroke-width="3"/>
+  <!-- 들어가는 코인 -->
+  <circle cx="32" cy="18" r="10" fill="#facc15"/>
+  <circle cx="32" cy="18" r="6.5" fill="none" stroke="#b45309" stroke-width="2"/>
+  <path d="M32 14.5v7" stroke="#b45309" stroke-width="2" stroke-linecap="round"/>
+  <!-- 흐름 -->
+  <path d="M32 30.5v3.5" stroke="#facc15" stroke-width="3" stroke-linecap="round"/>
+  <path d="M18 14l-4-2M18 21l-5 1M46 14l4-2M46 21l5 1" stroke="#facc15" stroke-width="2" stroke-linecap="round" opacity=".6"/>
+</svg>

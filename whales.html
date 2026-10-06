@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coin Collector — Whales</title>
+<link rel="stylesheet" href="lib/graphite.css">
+<style>
+  /* 공통 톤은 lib/graphite.css. 시세의 상승 빨강·하락 파랑만 관례대로 */
+  :root { --up: #f0454f; --down: #3b82f6; }
+  .g-page { max-width: 1280px; gap: 28px; }
+  .up { color: var(--up); } .down { color: var(--down); }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kpis .g-tile { display: flex; flex-direction: column; gap: 4px; }
+  canvas.spark { display: block; width: 100%; height: 40px; margin-top: 4px; }
+  .ratio-bar { display: flex; height: 4px; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, .06); margin: 10px 0 4px; gap: 2px; }
+  .ratio-bar i { display: block; height: 100%; transition: width .6s ease; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+  /* 차트 */
+  .chart-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .chart-head .stat { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .chart-head .stat b { color: var(--text-2); font-weight: 500; }
+  select.coinsel { appearance: none; background: rgba(255, 255, 255, .06) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a3a3a3' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center; color: var(--text); border: 1px solid transparent; border-radius: 4px; padding: 5px 28px 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  select.coinsel:focus { outline: none; border-color: var(--tone-soft); }
+  select.coinsel option { background: #2c2c2c; }
+  .chart-wrap { padding: 8px 6px 6px; }
+  .zoom-bar { display: none; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--tone-faint); font-size: 12px; color: var(--text-2); }
+  .zoom-bar.on { display: flex; }
+  .zoom-bar b { color: var(--tone-hover); font-weight: 500; }
+  .zoom-bar .g-btn { margin-left: auto; padding: 3px 10px; font-size: 12px; }
+
+  /* 고래 기록 */
+  .feed { max-height: 640px; overflow-y: auto; }
+  .w { display: grid; grid-template-columns: 3px minmax(0, 1fr) auto; gap: 10px; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .w:hover { background: rgba(255, 255, 255, .03); }
+  .w.new { animation: wnew 2.4s ease-out; }
+  @keyframes wnew { from { background: var(--tone-faint); } to { background: transparent; } }
+  .w .side { border-radius: 0 2px 2px 0; }
+  .w .t { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .w .t small { color: var(--dim); font-weight: 400; margin-left: 4px; }
+  .w .m { font-size: 11.5px; color: var(--dim); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .w .amt { text-align: right; font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 500; }
+  .w .amt small { display: block; font-size: 11px; color: var(--tone-hover); font-weight: 400; }
+  .empty { padding: 28px 14px; color: var(--dim); font-size: 12.5px; text-align: center; }
+
+  /* 큰 체결 */
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  th, td { padding: 6px 14px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--dim); font-weight: 500; font-size: 11.5px; position: sticky; top: 0; background: var(--surface); }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  .tape { max-height: 340px; overflow-y: auto; }
+
+  /* 새 고래 알림 */
+  #toast { position: fixed; left: 50%; top: 64px; z-index: 20; transform: translate(-50%, -12px); opacity: 0; visibility: hidden; pointer-events: none;
+    background: var(--surface); border: 1px solid var(--tone-soft); border-radius: 8px; padding: 12px 18px; min-width: 320px; box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+    transition: opacity .2s, transform .25s, visibility 0s linear .25s; }
+  #toast.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity .2s, transform .25s; }
+  #toast .k { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--tone-hover); }
+  #toast .v { font-size: 18px; font-weight: 500; margin-top: 2px; }
+  #toast .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+</style>
+</head>
+<body>
+<header class="g-top">
+  <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>코인 수집기</h1>
+  <nav class="g-tabs">
+    <a href="main.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg> DB 인사이드</a>
+    <a href="whales.html" class="on"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg> 고래</a>
+    <a href="game.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/></svg> 모의투자</a>
+    <a href="settings.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg> 수집 설정</a>
+  </nav>
+</header>
+
+<main class="g-page">
+  <section>
+    <div class="g-head"><h2 style="display:flex;align-items:center;gap:6px"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg>고래</h2><small id="rule">같은 코인·같은 방향 체결을 1초 동안 합친 금액이 평소보다 크게 튈 때</small></div>
+    <div class="kpis">
+      <div class="g-tile"><div class="g-key"><span>최근 1시간</span><code>CC_WHALE</code></div><div class="g-value" id="kCount">-</div><canvas class="spark"></canvas><div class="g-sub" id="kCountSub">5분마다 감지한 고래 수</div></div>
+      <div class="g-tile"><div class="g-key"><span>가장 큰 고래</span><code>최근 1시간</code></div><div class="g-value" id="kTop">-</div><div class="g-sub" id="kTopSub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key"><span>매수 · 매도</span><code>최근 1시간 금액</code></div><div class="g-value" id="kSide">-</div>
+        <div class="ratio-bar"><i id="kBuy" style="background:var(--up); width:50%"></i><i id="kSell" style="background:var(--down); width:50%"></i></div><div class="g-sub" id="kSideSub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key"><span>수집</span><span class="g-pill" id="kLive">-</span></div><div class="g-value" id="kRate">-</div><div class="g-sub" id="kRateSub">&nbsp;</div>
+        <div style="margin-top:auto; padding-top:8px"><button class="g-btn" id="sound" style="padding:3px 10px; font-size:12px">소리 꺼짐</button></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>차트와 고래 기록</h2><small>점 = 고래 · 점이나 기록을 누르면 그 순간 앞 1분 ~ 뒤 2분을 1초 단위로</small></div>
+    <div class="grid">
+      <div class="g-card" style="min-width:0">
+        <div class="chart-head">
+          <select class="coinsel" id="coin" title="코인"></select>
+          <span class="g-seg" id="span"></span>
+          <span class="stat" id="stat"></span>
+        </div>
+        <div class="zoom-bar" id="zoomBar"><span id="zoomText"></span><button class="g-btn" id="zoomBack">돌아가기</button></div>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+      <div class="g-card">
+        <div class="chart-head" style="justify-content:space-between"><span style="font-size:12px; color:var(--muted)">고래 기록</span><span class="g-seg" id="feedFilter"></span></div>
+        <div class="feed" id="feed"><div class="empty">아직 없어요. 수집기가 감지하면 여기에 쌓여요.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>큰 체결</h2><small>단건 $10K 이상 · 최근 100건</small></div>
+    <div class="g-card tape"><table><thead><tr><th>시각</th><th>코인</th><th>방향</th><th>가격</th><th>수량</th><th>금액</th></tr></thead><tbody id="tape"></tbody></table></div>
+  </section>
+</main>
+
+<div id="toast"><div class="k"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg> 새 고래</div><div class="v"></div><div class="s"></div></div>
+
+<script src="lib/markets.js"></script>
+<script src="lib/chart.js"></script>
+<script src="lib/candles.js"></script>
+<script src="lib/spark.js"></script>
+<script>
+'use strict';
+const API = 'cgi-bin/api/';
+const { coinOf } = window.COIN_MARKETS;
+
+// ── 포맷 ──
+const nf = (d) => new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+function fmtPrice(v) { if (v == null) return '-'; if (v >= 1000) return nf(2).format(v); if (v >= 1) return nf(4).format(v); return Number(v.toPrecision(4)).toString(); }
+function fmtUsd(v) { if (v == null) return '-'; const a = Math.abs(v); if (a >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K'; return '$' + Math.round(v); }
+const fmtPct = (v) => v == null ? '-' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+const pad = (n, w) => String(n).padStart(w || 2, '0');
+const hms = (t) => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+const hmsms = (t) => hms(t) + '.' + pad(new Date(t).getMilliseconds(), 3);
+function when(t) { const d = new Date(t), n = new Date(); return (d.toDateString() === n.toDateString() ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ') + hms(t); }
+const label = (name) => coinOf(name) + (/^BINANCE_F\./.test(name) ? ' 선물' : ' 현물');
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (_) { return null; } }
+function segment(el, items, isOn, onPick) {
+  el.innerHTML = '';
+  for (const [value, text] of items) {
+    const b = document.createElement('button'); b.textContent = text;
+    if (isOn(value)) b.className = 'on';
+    b.onclick = () => { onPick(value); segment(el, items, isOn, onPick); };
+    el.appendChild(b);
+  }
+}
+
+// ── 상태 ──
+let board = null, status = {}, retentionDays = 0;
+const whales = [];            // 최신이 앞
+let lastWhaleAt = 0;
+const sel = { name: store('cc.whales.coin') || null, span: 60 * 60000, zoom: null, filter: 'all' };
+
+// ── 고래 기록 ──
+segment(document.getElementById('feedFilter'), [['all', '전체'], ['coin', '이 코인']], (v) => v === sel.filter, (v) => { sel.filter = v; renderFeed(); });
+function renderFeed(fresh) {
+  const box = document.getElementById('feed');
+  const list = whales.filter((w) => sel.filter === 'all' || w.name === sel.name).slice(0, 200);
+  if (!list.length) { box.innerHTML = `<div class="empty">${sel.filter === 'coin' ? '이 코인의 고래가 아직 없어요.' : '아직 없어요. 수집기가 감지하면 여기에 쌓여요.'}</div>`; return; }
+  box.innerHTML = list.map((w, i) => {
+    const move = w.firstPrice ? (w.lastPrice / w.firstPrice - 1) * 100 : 0;
+    return `<div class="w${fresh && fresh.has(w) ? ' new' : ''}" data-i="${whales.indexOf(w)}"><span class="side" style="background:${w.side > 0 ? 'var(--up)' : 'var(--down)'}"></span>`
+      + `<div style="min-width:0"><div class="t">${esc(label(w.name))}<small>${w.side > 0 ? '매수' : '매도'}</small></div>`
+      + `<div class="m">${when(w.time)} · 1초에 ${nf(0).format(w.count)}건 · 가격 ${fmtPct(move)}</div></div>`
+      + `<div class="amt ${w.side > 0 ? 'up' : 'down'}">${fmtUsd(w.usd)}<small>평소의 ${Math.round(w.ratio)}배</small></div></div>`;
+  }).join('');
+  box.querySelectorAll('.w').forEach((el) => { el.onclick = () => zoomTo(whales[+el.dataset.i]); });
+}
+
+// ── 지표 ──
+function renderKpis() {
+  const now = Date.now(), hour = whales.filter((w) => w.time >= now - 3600000);
+  document.getElementById('kCount').innerHTML = hour.length + '<small>건</small>';
+  // 5분 칸 12개
+  const bins = []; for (let k = 11; k >= 0; k--) { const t = Math.floor(now / 300000) * 300000 - k * 300000; bins.push([t, 0]); }
+  for (const w of hour) { const b = bins.find((x) => w.time >= x[0] && w.time < x[0] + 300000); if (b) b[1]++; }
+  drawSparks(document.querySelector('.kpis'), [bins]);
+  const top = hour.slice().sort((a, b) => b.usd - a.usd)[0];
+  document.getElementById('kTop').innerHTML = top ? fmtUsd(top.usd) : '-';
+  document.getElementById('kTopSub').textContent = top ? `${label(top.name)} ${top.side > 0 ? '매수' : '매도'} · ${hms(top.time)} · 평소의 ${Math.round(top.ratio)}배` : '최근 1시간에 고래가 없어요';
+  const buy = hour.filter((w) => w.side > 0).reduce((a, w) => a + w.usd, 0), sell = hour.filter((w) => w.side < 0).reduce((a, w) => a + w.usd, 0);
+  const tot = buy + sell;
+  document.getElementById('kSide').innerHTML = tot ? Math.round(buy / tot * 100) + '<small>% 매수</small>' : '-';
+  document.getElementById('kBuy').style.width = (tot ? buy / tot * 100 : 50) + '%';
+  document.getElementById('kSell').style.width = (tot ? sell / tot * 100 : 50) + '%';
+  document.getElementById('kSideSub').textContent = tot ? `매수 ${fmtUsd(buy)} · 매도 ${fmtUsd(sell)}` : '최근 1시간에 고래가 없어요';
+  const r = status.rate || {}, running = status.running;
+  const pill = document.getElementById('kLive');
+  pill.className = 'g-pill' + (running ? ' ok' : ' bad'); pill.textContent = running ? '수집 중' : '멈춤';
+  document.getElementById('kRate').innerHTML = running ? nf(0).format(r.trades || 0) + '<small>체결/초</small>' : '0<small>체결/초</small>';
+  const mk = status.markets || {};
+  document.getElementById('kRateSub').textContent = mk.coins != null ? `코인 ${mk.coins}개 지켜보는 중` : '';
+  const rule = status.whaleRule;
+  if (rule) document.getElementById('rule').textContent = `같은 코인·같은 방향 체결을 1초 동안 합친 금액이 24시간 평균의 ${rule.ratio}배 이상이고 ${fmtUsd(rule.minUsd)} 이상일 때`;
+}
+
+// ── 알림 ──
+let soundOn = false, audioCtx = null, toastTimer = null;
+function beep(freq) {
+  audioCtx = audioCtx || new AudioContext();
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.frequency.value = freq; o.type = 'triangle';
+  g.gain.setValueAtTime(0.2, audioCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
+  o.connect(g).connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.45);
+}
+document.getElementById('sound').onclick = (e) => { soundOn = !soundOn; e.currentTarget.textContent = soundOn ? '소리 켜짐' : '소리 꺼짐'; if (soundOn) beep(660); };
+function alertWhale(w) {
+  const t = document.getElementById('toast');
+  t.querySelector('.v').innerHTML = `${esc(label(w.name))} <span class="${w.side > 0 ? 'up' : 'down'}">${w.side > 0 ? '매수' : '매도'} ${fmtUsd(w.usd)}</span>`;
+  t.querySelector('.s').textContent = `1초 동안 ${nf(0).format(w.count)}건 · 평소의 ${Math.round(w.ratio)}배`;
+  t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  if (soundOn) beep(w.side > 0 ? 880 : 440);
+}
+
+// ── 큰 체결 ──
+let tapeSeen = 0;
+function renderTape(tape) {
+  const fresh = (tape || []).filter((r) => r[1] > tapeSeen);
+  if (!fresh.length) return;
+  tapeSeen = fresh[fresh.length - 1][1];
+  const body = document.getElementById('tape');
+  const frag = document.createDocumentFragment();
+  for (const [name, t, price, qty, usd] of fresh.reverse()) {
+    const tr = document.createElement('tr'), cls = qty > 0 ? 'up' : 'down';
+    tr.innerHTML = `<td>${hmsms(t)}</td><td>${esc(label(name))}</td><td class="${cls}">${qty > 0 ? '매수' : '매도'}</td><td>${fmtPrice(price)}</td><td>${nf(4).format(Math.abs(qty))}</td><td class="${cls}">${fmtUsd(usd)}</td>`;
+    frag.appendChild(tr);
+  }
+  body.prepend(frag);
+  while (body.rows.length > 100) body.deleteRow(-1);
+}
+
+// ── 코인 목록: 요약판의 태그 (지금 수집하는 것), 24시간 거래대금 순 ──
+let coinKey = '';
+function renderCoins() {
+  if (!board) return;
+  const names = Object.keys(board.symbols).sort((a, b) => (board.symbols[b].quoteVolume || 0) - (board.symbols[a].quoteVolume || 0));
+  const key = names.join(',');
+  if (!sel.name || names.indexOf(sel.name) < 0) { sel.name = names[0] || null; if (sel.name) loadChart(); }
+  if (key === coinKey) return;
+  coinKey = key;
+  const el = document.getElementById('coin');
+  el.innerHTML = names.map((n) => `<option value="${esc(n)}"${n === sel.name ? ' selected' : ''}>${esc(label(n))}</option>`).join('');
+}
+document.getElementById('coin').onchange = (e) => { sel.name = e.target.value; store('cc.whales.coin', sel.name); sel.zoom = null; loadChart(); renderFeed(); };
+
+// ── 폴링: live API 하나 (요약판·새 고래·상태) — 서버 버그 때문에 호출 수를 줄인다 (README) ──
+async function poll() {
+  try {
+    const r = await fetch(API + 'live' + (lastWhaleAt ? '?whaleSince=' + lastWhaleAt : ''), { cache: 'no-store' }).then((x) => x.json());
+    if (!r.ok) throw new Error(r.reason);
+    const d = r.data;
+    status = d.status || {}; board = d.board;
+    const first = !lastWhaleAt, fresh = new Set();
+    for (const w of d.whales.slice().reverse()) {
+      whales.unshift(w); if (whales.length > 500) whales.pop();
+      if (!first) { fresh.add(w); alertWhale(w); }
+      if (w.time > lastWhaleAt) lastWhaleAt = w.time;
+    }
+    if (first && !lastWhaleAt) lastWhaleAt = 1;
+    renderCoins();
+    if (first || fresh.size) { renderFeed(fresh); if (fresh.size) drawChart(); }
+    renderKpis();
+    if (board) renderTape(board.tape);
+  } catch (e) { console.warn('live', e); }
+  setTimeout(poll, 1500);
+}
+
+// ── 차트 ──
+const SPANS = [[15 * 60000, '15분'], [60 * 60000, '1시간'], [6 * 3600000, '6시간'], [86400000, '1일']];
+segment(document.getElementById('span'), SPANS, (v) => v === sel.span, (v) => { sel.span = v; sel.zoom = null; loadChart(); });
+const chart = new PriceChart(document.getElementById('chart'), { height: 340, volumeHeight: 80, format: fmtPrice, formatMoney: fmtUsd, onWhale: (w) => zoomTo(w.src) });
+
+function zoomTo(w) {
+  if (!w) return;
+  sel.name = w.name; store('cc.whales.coin', w.name);
+  document.getElementById('coin').value = w.name;
+  sel.zoom = { from: w.time - 60000, to: w.time + 120000, whale: w };
+  loadChart();
+}
+document.getElementById('zoomBack').onclick = () => { sel.zoom = null; loadChart(); };
+
+let chartData = null, chartBusy = false, chartAgain = false;
+async function loadChart() {
+  if (!sel.name) return;
+  if (chartBusy) { chartAgain = true; return; }
+  chartBusy = true;
+  try {
+    const name = sel.name, zoom = sel.zoom;
+    const to = zoom ? zoom.to : Date.now(), from = zoom ? zoom.from : to - sel.span;
+    const points = zoom ? 180 : Math.max(120, Math.min(500, Math.floor(document.getElementById('chart').parentElement.clientWidth / 3)));
+    const r = await fetch(API + 'series?name=' + encodeURIComponent(name) + '&from=' + from + '&to=' + to + '&points=' + points + (zoom ? '&src=raw' : ''), { cache: 'no-store' }).then((x) => x.json());
+    if (!r.ok) throw new Error(r.reason);
+    if (name !== sel.name || zoom !== sel.zoom) return;
+    chartData = { name, from, to, d: r.data };
+    drawChart();
+    const stat = document.getElementById('stat');
+    stat.innerHTML = CoinCandles.badge(r.data);
+    CoinCandles.wireBadge(stat, r.data, label(name) + ' 차트 쿼리');
+    document.getElementById('zoomBar').classList.toggle('on', !!zoom);
+    if (zoom) {
+      const w = zoom.whale;
+      document.getElementById('zoomText').innerHTML = `확대 · <b>${esc(label(w.name))} ${w.side > 0 ? '매수' : '매도'} ${fmtUsd(w.usd)}</b> · ${when(w.time)} 앞 1분 ~ 뒤 2분 · 그 1초에 ${nf(0).format(w.count)}건`
+        + (r.data.rows.length ? '' : ' · 원본 체결이 보관 기간이 지나 지워졌어요');
+    }
+  } catch (e) { console.warn('chart', e); }
+  finally { chartBusy = false; if (chartAgain) { chartAgain = false; loadChart(); } }
+}
+function drawChart() {
+  if (!chartData || chartData.name !== sel.name) return;
+  const { d, from, to, name } = chartData;
+  chart.set(Object.assign(CoinCandles.toChart(d), {
+    whales: whales.filter((w) => w.name === name && w.time >= from && w.time < to).map((w) => ({ t: w.time + 500, v: w.lastPrice, usd: w.usd, side: w.side, src: w })),
+    from, to,
+  }));
+}
+
+poll();
+setInterval(() => { if (!sel.zoom) loadChart(); }, 5000);   // 확대 중에는 과거 구간이라 다시 부를 필요가 없다
+setInterval(renderKpis, 30000);
+</script>
+</body>
+</html>

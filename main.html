@@ -1,0 +1,689 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coin Collector — Inside</title>
+<link rel="stylesheet" href="lib/graphite.css">
+<style>
+  /* 공통 톤은 lib/graphite.css. 옛 이름의 색 변수는 한 톤으로 모은다 — 캔들 차트의 상승·하락(--up·--down)만 시세 관례대로 */
+  :root { --elev: var(--surface); --panel: var(--surface); --gold: var(--tone); --ok: var(--tone); --tag: var(--tone); --roll: var(--tone); --log: var(--tone);
+    --up: #f0454f; --down: #3b82f6; }
+  section { min-width: 0; }
+  .body { }
+  .kind { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 0 6px; border-radius: 4px; color: var(--muted); background: rgba(255, 255, 255, .06); }
+  .kind.ROLLUP { color: var(--tone-hover); background: var(--tone-faint); }
+
+  /* ① 흐름도 — 카드는 HTML(글자가 화면 폭에 따라 작아지지 않게), 연결선만 SVG 로 위에 그린다 */
+  .flow { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); column-gap: 56px; }
+  .flow .col { display: flex; flex-direction: column; justify-content: center; gap: 18px; position: relative; z-index: 1; }
+  .flow .colttl { font-size: 11px; color: var(--dim); padding-bottom: 8px; }
+  .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: visible; }
+  .wires .track { fill: none; stroke: rgba(255, 255, 255, .05); stroke-linecap: round; }
+  .wires .flowing { fill: none; stroke-linecap: round; stroke-dasharray: 2 14; animation: wire linear infinite; }
+  .wires .flowing.idle { animation: none; opacity: .25; }
+  @keyframes wire { to { stroke-dashoffset: -32; } }
+  .fnode { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 12px; position: relative; overflow: hidden; transition: opacity .3s, border-color .2s; }
+  .fnode.svc { border-color: var(--tone-soft); }
+  .fnode.off { opacity: .45; }
+  .fnode .fh { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .fnode .fh .ic { color: var(--dim); }
+  .fnode .fh .pill { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 1px 8px; border-radius: 99px; background: rgba(255, 255, 255, .05); color: var(--muted); white-space: nowrap; }
+  .fnode .fh .pill.ok { color: var(--tone-hover); background: var(--tone-faint); }
+  .fnode .fh .pill.bad { color: #fca5a5; background: var(--bad-faint); }
+  .fnode .fv { margin-top: 6px; font-size: 26px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.25; }
+  .fnode .fv small { font-size: 13px; color: var(--muted); font-weight: 400; letter-spacing: 0; margin-left: 4px; }
+  .fnode .fs { margin-top: 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .fnode .fs b { color: var(--text-2); font-weight: 500; }
+  .split { display: flex; height: 4px; border-radius: 99px; overflow: hidden; margin-top: 10px; background: rgba(255, 255, 255, .06); gap: 2px; }
+  .split i { display: block; height: 100%; transition: width .6s ease; }
+  .split-l { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .dotk { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
+  @media (max-width: 980px) {
+    .flow { grid-template-columns: 1fr; row-gap: 26px; }
+    .flow .col { flex-direction: row; flex-wrap: wrap; }
+    .flow .col > .fnode { flex: 1 1 220px; }
+    .flow .colttl { display: none; }
+    .flow .col:not(:last-child)::after { content: '↓'; position: absolute; left: 50%; bottom: -24px; color: var(--muted); }
+    .wires { display: none; }
+  }
+
+  /* ② 속도 비교 */
+  .theater { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 460px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  @media (max-width: 900px) { .theater { grid-template-columns: 1fr; } }
+  .qlist { border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .qlist button { text-align: left; background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 6px; padding: 9px 11px; cursor: pointer; font: inherit; }
+  .qlist button:hover { background: rgba(255, 255, 255, .04); }
+  .qlist button.on { background: var(--tone-faint); border-color: var(--tone-soft); }
+  .qlist button small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .stage { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .stage .top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .stage .top h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .coinsel { appearance: none; background: rgba(255, 255, 255, .06) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a3a3a3' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center; color: var(--text); border: 1px solid transparent; border-radius: 4px; padding: 5px 28px 5px 10px; font: inherit; font-size: 13px; cursor: pointer; max-width: 240px; }
+  .coinsel:focus { outline: none; border-color: var(--tone-soft); }
+  .coinsel:disabled { opacity: .5; cursor: default; }
+  .coinsel option { background: #2c2c2c; }
+  .modes { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-left: auto; }
+  .modes button { border: 0; background: transparent; color: var(--muted); padding: 7px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+  .modes button + button { border-left: 1px solid var(--line); }
+  .modes button.on { background: #353535; color: var(--text); font-weight: 700; }
+  .runbtn { background: var(--tone); color: var(--tone-ink); border: 1px solid var(--tone); border-radius: 4px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; }
+  .runbtn:hover:not(:disabled) { background: var(--tone-hover); }
+  .runbtn:disabled { opacity: .5; }
+  .runs { display: inline-flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .runbtn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line-strong); }
+  .runbtn.ghost:hover:not(:disabled) { background: rgba(255, 255, 255, .06); }
+  .runbtn:disabled { cursor: default; }
+  .vs-card.pickable { cursor: pointer; }
+  .vs-card.sel { border-color: var(--line-strong); }
+  .vs-card.busy .ms { color: var(--gold); }
+  .vs-card .bar i.indet { width: 35%; animation: indet 1.1s ease-in-out infinite; }
+  @keyframes indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+  .versus { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .vs-card { background: var(--well); border-radius: 8px; padding: 12px 14px; border: 1px solid var(--line); }
+  .vs-card.win { border-color: var(--tone-soft); }
+  .vs-card .lbl { font-size: 12px; color: var(--muted); }
+  .vs-card .ms { font-size: 26px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .vs-card .ms small { font-size: 13px; color: var(--muted); margin-left: 3px; letter-spacing: 0; }
+  .vs-card .meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .vs-card .bar { height: 4px; background: rgba(255, 255, 255, .06); border-radius: 99px; margin-top: 8px; overflow: hidden; }
+  .vs-card .bar i { display: block; height: 100%; border-radius: 99px; background: var(--tone); transition: width .6s ease; }
+  .result { background: var(--well); border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-height: 180px; }
+  .result table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .result td, .result th { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; }
+  .result td:first-child, .result th:first-child { text-align: left; }
+  .result th { color: var(--muted); font-weight: 500; }
+  .hbar { display: grid; grid-template-columns: 110px 1fr 90px; gap: 8px; align-items: center; font-size: 12px; margin: 5px 0; font-variant-numeric: tabular-nums; }
+  .hbar i { display: block; height: 12px; background: var(--tone); border-radius: 2px; opacity: .85; }
+  .bignum { font-size: 40px; font-weight: 500; letter-spacing: -.02em; text-align: center; padding: 40px 0; font-variant-numeric: tabular-nums; }
+  pre.sql { margin: 0; background: #1e1e1e; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font: 12px/1.6 var(--mono); color: var(--text-2); white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
+  .note { font-size: 12px; color: var(--muted); }
+
+  /* ③ 저장 구조 */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 12px; }
+  .card .t { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .card .t .kind { margin-left: auto; font-family: "Pretendard", sans-serif; }
+  .card .role { font-size: 12px; color: var(--dim); margin: 2px 0 6px; }
+  .card .rows { font-size: 26px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .card .rows small { font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 4px; letter-spacing: 0; }
+  .card .why { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .card .foot { font-size: 11px; color: var(--dim); margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .groupttl { font-size: 11px; color: var(--dim); margin: 20px 0 8px; }
+  .spark-tile { display: flex; flex-direction: column; gap: 4px; }
+  .spark-tile .g-value { margin-top: 2px; }
+  .spark-tile canvas.spark { display: block; width: 100%; height: 46px; margin-top: 4px; }
+  .spark-tile .foot { margin-top: 2px; }
+
+  /* ④ 데이터 수명 */
+  .life { position: relative; padding: 14px 16px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+  .lane { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: center; margin: 10px 0; }
+  .lane .name { font-size: 13px; font-weight: 500; }
+  .lane .name small { display: block; color: var(--dim); font-weight: 400; font-size: 11px; }
+  .track { position: relative; height: 24px; background: repeating-linear-gradient(135deg, #2a2a2a 0 6px, #262626 6px 12px); border-radius: 4px; overflow: hidden; }
+  .track i { position: absolute; top: 4px; bottom: 4px; right: 0; border-radius: 3px; background: var(--tone); opacity: .8; }
+  .track .win { position: absolute; top: 0; bottom: 0; right: 0; border: 1px dashed var(--tone-soft); border-radius: 4px; }
+  .track .forever { position: absolute; left: 6px; top: 3px; font-size: 12px; font-weight: 400; color: var(--tone-hover); }
+  .track .gone { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(0, 0, 0, .28); border-radius: 4px 0 0 4px; font-style: normal; overflow: hidden; }
+  .track .gone span { position: absolute; right: 8px; top: 3px; font-size: 11px; color: var(--dim); white-space: nowrap; }
+  .track .cut { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--muted); }
+  .track .lbl { position: absolute; top: 3px; font-size: 11px; color: var(--text); white-space: nowrap; background: rgba(30, 30, 30, .9); padding: 1px 6px; border-radius: 4px; z-index: 2; }
+  .axis { display: grid; grid-template-columns: 170px 1fr; gap: 12px; }
+  .axis .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); }
+  .cutline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--muted); }
+  .cutline b { position: absolute; top: -18px; left: 6px; font-size: 11px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+
+  /* ⑤ 부하 */
+  .load { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 900px) { .load { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 14px 12px; }
+  .kpi .k { font-size: 12px; color: var(--muted); }
+  .kpi .v { font-size: 26px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .kpi .s { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<header class="g-top">
+  <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>코인 수집기</h1>
+  <nav class="g-tabs">
+    <a href="main.html" class="on"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg> DB 인사이드</a>
+    <a href="whales.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg> 고래</a>
+    <a href="game.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/></svg> 모의투자</a>
+    <a href="settings.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg> 수집 설정</a>
+  </nav>
+</header>
+
+<main class="g-page">
+  <section>
+    <div class="g-head"><h2>데이터 흐름</h2><small>선 굵기·흐름 속도 = 지금의 초당 입력량 · 3초마다 갱신</small></div>
+    <div class="flow" id="flow">
+      <svg class="wires" id="wires" aria-hidden="true"></svg>
+      <div class="colttl">원천 · 바이낸스 웹소켓</div><div class="colttl">수집</div><div class="colttl">원본 · TAG 테이블</div><div class="colttl">요약 · 롤업</div>
+      <div class="col">
+        <div class="fnode src" id="n-spot"><div class="fh"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h3l3-8 4 16 3-8h7"/></svg><span>바이낸스 현물</span><span class="pill" id="p-spot">-</span></div><div class="fv" id="v-spot">-</div><div class="fs" id="s-spot">&nbsp;</div></div>
+        <div class="fnode src" id="n-fut"><div class="fh"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h3l3-8 4 16 3-8h7"/></svg><span>바이낸스 선물</span><span class="pill" id="p-fut">-</span></div><div class="fv" id="v-fut">-</div><div class="fs" id="s-fut">&nbsp;</div></div>
+      </div>
+      <div class="col">
+        <div class="fnode svc" id="n-svc"><div class="fh"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6M7 17h3"/></svg><span>수집기 · JSH 서비스</span><span class="pill" id="p-svc">-</span></div><div class="fv" id="v-svc">-</div><div class="split" id="split"><i style="background:var(--tone)"></i><i style="background:var(--tone-soft)"></i></div><div class="split-l"><span id="l-tr">&nbsp;</span><span id="l-bk">&nbsp;</span></div><div class="fs" id="s-svc">&nbsp;</div></div>
+      </div>
+      <div class="col">
+        <div class="fnode tag" id="n-tick"><div class="fh"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg><span>CC_TICK · 체결</span><span class="pill" id="p-tick">-</span></div><div class="fv" id="v-tick">-</div><div class="fs" id="s-tick">&nbsp;</div></div>
+        <div class="fnode tag" id="n-book"><div class="fh"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg><span>CC_BOOK · 호가</span><span class="pill" id="p-book">-</span></div><div class="fv" id="v-book">-</div><div class="fs" id="s-book">&nbsp;</div></div>
+      </div>
+      <div class="col">
+        <div class="fnode roll" id="n-roll"><div class="fh"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>롤업 · 분·시</span><span class="pill" id="p-roll">-</span></div><div class="fv" id="v-roll">-</div><div class="fs" id="s-roll">&nbsp;</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>원본 vs 롤업 속도 비교</h2><small>같은 질문을 두 방식으로 실행해 걸린 시간·읽은 행·SQL 을 나란히 봐요</small></div>
+    <div class="theater">
+      <div class="qlist" id="qlist"></div>
+      <div class="stage">
+        <div class="top"><h3 id="qTitle"></h3><select id="qCoin" class="coinsel" hidden title="조회할 코인"></select><span class="runs" id="qRun"></span></div>
+        <div class="versus" id="qVersus"></div>
+        <div class="result"><div id="qcWrap" style="display:none"><canvas id="qc"></canvas></div><div id="qResult"><div class="note">왼쪽에서 질문을 고르세요.</div></div></div>
+        <pre class="sql" id="qSql"></pre>
+        <div class="note" id="qNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>저장 구조</h2><small>테이블마다 종류와 이유 · TAG 건수는 통계 뷰로 즉시 (<span id="statMs">-</span>ms)</small></div>
+    <div class="body">
+      <div class="cards" id="tables"></div>
+      <div class="groupttl">롤업 — 미리 계산해 둔 분·시 요약 (원본을 지워도 남는다)</div>
+      <div class="cards" id="rollups"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>데이터 수명</h2><small>원본은 짧게, 요약은 길게</small></div>
+    <div class="body">
+      <div class="life" id="life"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="g-head"><h2>실시간 부하</h2><small>선은 이 화면을 연 뒤 최근 5분 · 3초마다</small></div>
+    <div class="body">
+      <div class="load">
+        <div class="kpi spark-tile"><div class="g-key"><span>초당 입력</span><code>체결 + 호가</code></div><div class="v" id="kRate">-</div><canvas class="spark"></canvas><div class="s" id="kRateSplit">&nbsp;</div></div>
+        <div class="kpi spark-tile"><div class="g-key"><span>테이블 행 수</span><code>V$CC_*_STAT</code></div><div class="v" id="kTotal">-</div><canvas class="spark"></canvas><div class="s" id="kTotalSub">&nbsp;</div></div>
+        <div class="kpi spark-tile"><div class="g-key"><span>롤업 반영</span><code>V$ROLLUP</code></div><div class="v" id="kLag">-</div><canvas class="spark"></canvas><div class="s" id="kLagSub">&nbsp;</div></div>
+        <div class="kpi spark-tile"><div class="g-key"><span>이 탭의 상태 조회</span><code>api/inside</code></div><div class="v" id="kStat">-</div><canvas class="spark"></canvas><div class="s">테이블·롤업 8개를 한 번에 · 3초마다</div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="lib/chart.js"></script>
+<script src="lib/candles.js"></script>
+<script>
+'use strict';
+const API = 'cgi-bin/api/';
+const nf = (d) => new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const big = (n) => n == null ? '-' : n >= 1e8 ? (n / 1e8).toFixed(2) + '억' : n >= 1e4 ? nf(0).format(Math.round(n / 1e4)) + '만' : nf(0).format(n);
+const pad = (n) => String(n).padStart(2, '0');
+const hm = (t) => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const hms = (t) => hm(t) + ':' + pad(new Date(t).getSeconds());
+const dur = (ms) => ms == null ? '-' : ms < 60000 ? Math.round(ms / 1000) + '초' : ms < 3600000 ? Math.round(ms / 60000) + '분' : ms < 86400000 ? (ms / 3600000).toFixed(1) + '시간' : (ms / 86400000).toFixed(1) + '일';
+const usd = (v) => v >= 1e6 ? '$' + (v / 1e6).toFixed(2) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(1) + 'K' : '$' + Math.round(v);
+function fmtPrice(v) { if (v == null) return '-'; if (v >= 1000) return nf(2).format(v); if (v >= 1) return nf(4).format(v); return Number(v.toPrecision(4)).toString(); }
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let S = null;            // 마지막 inside 상태
+const history = [];      // [{ t, trades, book }]
+
+// ── ① 흐름도 ──
+// 카드는 HTML, 연결선은 카드 위치를 재서 SVG 로 그린다 (화면 폭·카드 높이가 바뀌면 다시).
+// 선 굵기·점선이 흐르는 속도는 그 구간의 초당 입력량 (로그 눈금). 0 이면 흐리게 멈춘다.
+const WIRES = [
+  ['spot', 'svc', '#6d8bff'], ['fut', 'svc', '#6d8bff'],
+  ['svc', 'tick', '#6d8bff'], ['svc', 'book', '#6d8bff'],
+  ['tick', 'roll', '#8ea4ff'],
+];
+const wireRate = {};     // 'spot>svc' → 초당
+const wiresEl = document.getElementById('wires');
+const flowEl = document.getElementById('flow');
+function drawWires() {
+  if (getComputedStyle(wiresEl).display === 'none') return;
+  const box = flowEl.getBoundingClientRect();
+  const at = (id) => document.getElementById('n-' + id).getBoundingClientRect();
+  let out = '';
+  for (const [a, b, color] of WIRES) {
+    const A = at(a), B = at(b);
+    const x1 = A.right - box.left, y1 = A.top + A.height / 2 - box.top;
+    const x2 = B.left - box.left, y2 = B.top + B.height / 2 - box.top;
+    const mx = (x1 + x2) / 2;
+    const d = `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+    const r = wireRate[a + '>' + b] || 0;
+    const w = r > 0 ? Math.min(5, 1.5 + Math.log10(r + 1) * 0.9) : 1.5;
+    const dur = r > 0 ? Math.max(0.35, 2.4 - Math.log10(r + 1) * 0.55) : 0;   // 많을수록 빠르게
+    out += `<path class="track" d="${d}" stroke-width="${w + 4}"/>`
+      + `<path class="flowing${r > 0 ? '' : ' idle'}" d="${d}" stroke="${color}" stroke-width="${w}" style="animation-duration:${dur}s"/>`
+      + `<circle cx="${x2}" cy="${y2}" r="3.2" fill="${color}" opacity="${r > 0 ? 1 : .3}"/>`;
+  }
+  wiresEl.innerHTML = out;
+}
+new ResizeObserver(drawWires).observe(flowEl);
+
+// 종류별(현물·선물) 초당 유입: 수집기가 연결별로 센 누적 건수를 두 번 읽은 차이
+let prevFeeds = null;
+function feedRates(st) {
+  const f = st.feeds || {}, t = st.updatedAt || 0;
+  const cur = { t: t, spot: f.spot || {}, fut: f.futures || {} };
+  let out = null;
+  if (prevFeeds && t > prevFeeds.t) {
+    const sec = (t - prevFeeds.t) / 1000;
+    const d = (k, x) => Math.max(0, ((cur[k][x] || 0) - (prevFeeds[k][x] || 0)) / sec);
+    const r = { spot: { trades: d('spot', 'trades'), book: d('spot', 'book') }, fut: { trades: d('fut', 'trades'), book: d('fut', 'book') } };
+    // 설정이 바뀌어 연결이 새로 열리면 누적이 0 부터 다시 센다 — 줄어든 회차는 버린다
+    if ((cur.spot.trades || 0) >= (prevFeeds.spot.trades || 0) && (cur.fut.trades || 0) >= (prevFeeds.fut.trades || 0)) out = r;
+  }
+  if (t !== (prevFeeds && prevFeeds.t)) prevFeeds = cur;
+  return out;
+}
+let lastKindRates = null;
+
+const setText = (id, v) => { const e = document.getElementById(id); if (e) e.innerHTML = v; };
+function pill(id, cls, text) { const e = document.getElementById('p-' + id); e.className = 'pill' + (cls ? ' ' + cls : ''); e.textContent = text; }
+const perSec = (v) => nf(0).format(Math.round(v || 0)) + '<small>/초</small>';
+
+function renderFlow() {
+  const st = S.status, r = st.rate || {}, t = st.total || {}, fs = st.feeds || {}, mk = st.markets || {};
+  const tb = Object.fromEntries(S.tables.map((x) => [x.name, x]));
+  const trades = r.trades || 0, book = r.book || 0;
+  lastKindRates = feedRates(st) || lastKindRates;
+  // 아직 두 번 못 읽었으면 수집기 전체 유입을 받은 체결 수 비율로 나눠 둔다
+  const kr = lastKindRates || (() => {
+    const a = (fs.spot && fs.spot.trades) || 0, b = (fs.futures && fs.futures.trades) || 0, sh = a + b ? a / (a + b) : 0.5;
+    return { spot: { trades: trades * sh, book: book * sh }, fut: { trades: trades * (1 - sh), book: book * (1 - sh) } };
+  })();
+
+  // 원천
+  for (const [id, f, k, n, nd] of [['spot', fs.spot, 'spot', mk.spot, mk.spotDepth], ['fut', fs.futures, 'fut', mk.futures, mk.futuresDepth]]) {
+    const on = f && f.enabled;
+    document.getElementById('n-' + id).classList.toggle('off', !on);
+    if (!on) pill(id, '', '받지 않음');
+    else if (!st.running) pill(id, 'bad', '수집기 멈춤');
+    else if (f.connected) pill(id, 'ok', '● 연결' + (f.connections > 1 ? ` ${f.up}/${f.connections}` : ''));
+    else pill(id, 'bad', `끊김 ${f.up}/${f.connections}`);
+    const rr = kr[k];
+    setText('v-' + id, on ? perSec(rr.trades + rr.book) : '-');
+    setText('s-' + id, on ? `체결 <b>${n}</b>코인 · 호가 <b>${nd}</b>코인 · 스트림 ${f.streams}` : '설정에서 고른 코인이 없어요');
+    wireRate[id + '>svc'] = on && st.running ? rr.trades + rr.book : 0;
+  }
+
+  // 수집기
+  pill('svc', st.running ? 'ok' : 'bad', st.running ? '● 실행 중' : '멈춤');
+  setText('v-svc', perSec(trades + book));
+  const tot = trades + book;
+  const bars = document.querySelectorAll('#split i');
+  bars[0].style.width = (tot ? trades / tot * 100 : 0) + '%'; bars[1].style.width = (tot ? book / tot * 100 : 0) + '%';
+  setText('l-tr', `<span class="dotk" style="background:var(--tone)"></span>체결 ${nf(0).format(trades)}`);
+  setText('l-bk', `호가 ${nf(0).format(book)}<span class="dotk" style="background:var(--tone-soft);margin:0 0 0 4px"></span>`);
+  setText('s-svc', `1초마다 append · 버퍼 대기 ${nf(0).format(st.buffered || 0)}건`
+    + (st.db && st.db.connected === false ? ' · <span style="color:var(--up)">DB 끊김</span>' : ''));
+
+  // 원본 테이블
+  const days = S.retention && S.retention.days;
+  const keep = days ? `보관 ${days}일` : '보관 무제한';
+  for (const [id, name, rate, on] of [['tick', 'CC_TICK', trades, true], ['book', 'CC_BOOK', book, st.book ? st.book.enabled !== false : true]]) {
+    const x = tb[name] || {};
+    pill(id, on ? '' : 'bad', on ? keep : '꺼짐');
+    setText('v-' + id, big(x.rows) + '<small>건</small>');
+    setText('s-' + id, `<b>${nf(0).format(rate)}</b>/초 · 태그 ${x.tags || 0}개` + (x.first ? ` · ${dur(x.last - x.first)}치` : ''));
+    wireRate['svc>' + id] = st.running ? rate : 0;
+  }
+  if (st.book && st.book.enabled === false) setText('s-book', '<span style="color:var(--up)">테이블을 못 열어 호가만 끔</span>');
+
+  // 롤업
+  const rl = S.rollups.find((x) => /_ROLLUP_MIN$/.test(x.name)) || {};
+  const rollRows = S.rollups.reduce((a, x) => a + x.rows, 0);
+  pill('roll', rl.lastRun ? 'ok' : '', rl.lastRun ? '● 1분마다' : '첫 실행 대기');
+  setText('v-roll', big(rollRows) + '<small>행</small>');
+  setText('s-roll', `롤업 ${S.rollups.length}개 · 가격·거래대금·순매수` + (rl.lastRun ? `<br>마지막 ${dur(S.now - rl.lastRun)} 전 · 원본보다 ${rl.lagMs != null ? dur(rl.lagMs) : '-'} 뒤` : ''));
+  wireRate['tick>roll'] = rl.lastRun ? Math.max(1, trades / 60) : 0;   // 롤업은 1분 묶음 — 체결의 1/60 로 그린다
+
+  drawWires();
+}
+
+// ── ② 속도 비교 ──
+// 질문을 골라도 아무것도 실행하지 않는다 — 원본 쿼리는 천만 행 넘게 읽어 수십 초 걸리기도 한다. 실행 버튼을 눌러야 돈다.
+// "둘 다 실행"은 두 방식을 동시에 던진다 — 롤업이 먼저 끝나고 원본이 한참 더 도는 경주가 그대로 보인다.
+// 다른 질문은 실행 중인 게 끝나야 돌린다 (긴 요청이 여럿 겹치면 서버 버그 위험도 커진다 — README).
+// 결과는 질문별로 남겨 두어 다른 질문을 봤다 와도 다시 실행하지 않는다.
+// coin: true 인 질문은 코인을 고른다 — 고를 수 있는 태그는 theater?id=list (체결 테이블에 데이터가 있는 태그 ∪ 지금 수집 설정)
+const Q = [
+  { id: 'day_candles', t: '24시간 5분봉', s: '원본 수백만 건 vs 롤업 288칸', modes: ['raw', 'rollup'], coin: true },
+  { id: 'top_coins', t: '지난 1시간 거래대금 TOP 10', s: '원본 전체 스캔 vs 롤업 테이블 직접 읽기', modes: ['raw', 'rollup'] },
+  { id: 'week_candles', t: '7일 30분봉', s: '원본 7일치 전부 vs 롤업 336칸', modes: ['raw', 'rollup'], coin: true },
+  { id: 'count', t: '보관 중인 체결 건수', s: '통계 뷰 vs COUNT(*)', modes: ['stat', 'count'] },
+  { id: 'last_second', t: '방금 1초의 원본 체결', s: '태그·시각으로 바로 찾기', modes: ['raw'], coin: true },
+];
+let PICKS = [];
+const QBY = Object.fromEntries(Q.map((q) => [q.id, q]));
+const MODE_LABEL = { raw: '원본', rollup: '롤업', stat: '통계 뷰', count: 'COUNT(*)' };
+const tagLabel = (t) => String(t).replace(/^BINANCE(_F)?\./, '').replace(/USDT$/, '') + (/^BINANCE_F\./.test(t) ? ' 선물' : ' 현물');
+// 결과는 질문(+코인)마다 남긴다: key = id 또는 id|태그. view[key] = 보고 있는 방식, cache[key][mode] = 결과
+const qsel = { id: 'day_candles', name: null, view: {}, cache: {} };
+const qkey = (id) => (QBY[id].coin ? id + '|' + qsel.name : id);
+const qTitle = (q) => (q.coin && qsel.name ? tagLabel(qsel.name) + ' · ' : '') + q.t;
+let running = null;   // { key, modes: { 방식: 시작 시각 } } — 한 질문 안에서만 동시에
+const qlist = document.getElementById('qlist');
+for (const q of Q) {
+  const b = document.createElement('button');
+  b.innerHTML = esc(q.t) + '<small>' + esc(q.s) + '</small>';
+  b.onclick = () => pick(q.id);
+  b.dataset.id = q.id;
+  qlist.appendChild(b);
+}
+let qchart = null;
+
+async function runQuery(id, mode) {
+  const key = qkey(id);
+  running = running || { key: key, modes: {} };
+  running.modes[mode] = Date.now();
+  renderStage();
+  try {
+    const name = QBY[id].coin && qsel.name ? '&name=' + encodeURIComponent(qsel.name) : '';
+    const r = await fetch(API + 'theater?id=' + id + '&mode=' + mode + name, { cache: 'no-store' }).then((x) => x.json());
+    if (!r.ok) throw new Error(r.reason);
+    (qsel.cache[key] = qsel.cache[key] || {})[mode] = r.data;
+    // 동시에 돌린 것 중 먼저 끝난 결과를 보여 주고, 나중 것이 끝나도 화면을 바꾸지 않는다 (카드를 눌러 바꿔 본다)
+    if (!running.shown) { qsel.view[key] = mode; running.shown = true; }
+  } catch (e) {
+    (qsel.cache[key] = qsel.cache[key] || {})[mode] = { error: String(e.message || e) };
+  } finally {
+    delete running.modes[mode];
+    if (!Object.keys(running.modes).length) running = null;
+    renderStage();
+  }
+}
+function runModes(modes) {
+  return Promise.all(modes.map((m) => runQuery(qsel.id, m)));   // 동시에
+}
+
+function pick(id) {
+  qsel.id = id;
+  for (const b of qlist.children) b.classList.toggle('on', b.dataset.id === id);
+  renderStage();
+}
+
+// 실행 중 경과 시간
+setInterval(() => {
+  if (!running) return;
+  for (const m in running.modes) {
+    const el = document.getElementById('qElapsed-' + m);
+    if (el) el.textContent = ((Date.now() - running.modes[m]) / 1000).toFixed(1) + '초';
+  }
+}, 100);
+
+function renderStage() {
+  const q = QBY[qsel.id], key = qkey(q.id), cache = qsel.cache[key] || {};
+  document.getElementById('qTitle').textContent = qTitle(q);
+  const sel = document.getElementById('qCoin');
+  sel.hidden = !q.coin || !sel.options.length;
+  sel.disabled = !!running;
+  // 실행 버튼: 방식마다 하나 + 둘 다
+  const runs = document.getElementById('qRun'); runs.innerHTML = '';
+  const addBtn = (label, modes, primary) => {
+    const b = document.createElement('button');
+    b.className = 'runbtn' + (primary ? '' : ' ghost');
+    b.textContent = label;
+    b.disabled = !!running;
+    b.onclick = () => runModes(modes);
+    runs.appendChild(b);
+  };
+  for (const m of q.modes) addBtn((MODE_LABEL[m] || m) + ' 실행', [m], q.modes.length === 1);
+  if (q.modes.length > 1) addBtn('둘 다 실행', q.modes, true);
+  // 비교 카드 — 결과가 있는 카드를 누르면 그 결과를 본다
+  const view = qsel.view[key];
+  const done = q.modes.map((m) => cache[m]).filter((x) => x && !x.error);
+  const maxMs = Math.max(1, ...done.map((x) => x.ms));
+  const minMs = Math.min(...done.map((x) => x.ms));
+  const vs = document.getElementById('qVersus');
+  vs.innerHTML = q.modes.map((m) => {
+    const x = cache[m], label = MODE_LABEL[m] || m;
+    if (running && running.key === key && running.modes[m]) {
+      return `<div class="vs-card busy"><div class="lbl">${label}</div><div class="ms"><span id="qElapsed-${m}">${((Date.now() - running.modes[m]) / 1000).toFixed(1)}초</span></div><div class="meta">실행 중…</div><div class="bar"><i class="indet"></i></div></div>`;
+    }
+    if (!x) return `<div class="vs-card"><div class="lbl">${label}</div><div class="ms">-</div><div class="meta">아직 실행 안 함</div></div>`;
+    if (x.error) return `<div class="vs-card"><div class="lbl">${label}</div><div class="ms">실패</div><div class="meta">${esc(x.error)}</div></div>`;
+    const meta = x.readRows != null ? '읽은 행 ' + nf(0).format(x.readRows)
+      : x.represented != null ? '원본 ' + big(x.represented) + '건 분량' : '';
+    return `<div class="vs-card pickable ${m === view ? 'sel' : ''} ${done.length > 1 && x.ms === minMs ? 'win' : ''}" data-mode="${m}"><div class="lbl">${label}${m === view ? ' · 보는 중' : ''}</div>`
+      // 같은 질문이 아직 도는 중이면 막대를 비워 둔다 — 끝난 것끼리만 재면 먼저 끝난 롤업이 꽉 찬 막대로 보인다
+      + `<div class="ms">${nf(0).format(x.ms)}<small>ms</small></div><div class="meta">${meta}</div><div class="bar"><i style="width:${running && running.key === key ? 0 : x.ms / maxMs * 100}%"></i></div></div>`;
+  }).join('');
+  vs.style.gridTemplateColumns = `repeat(${q.modes.length}, minmax(0, 1fr))`;
+  vs.querySelectorAll('.pickable').forEach((el) => { el.onclick = () => { qsel.view[key] = el.dataset.mode; renderStage(); }; });
+  // 결과 — 보고 있는 방식의 결과, 없으면 안내
+  const d = view && cache[view] && !cache[view].error ? cache[view] : null;
+  const res = document.getElementById('qResult');
+  if (!d) {
+    document.getElementById('qcWrap').style.display = 'none';
+    const other = running && running.key !== key ? ' 지금 다른 질문의 쿼리가 실행 중이에요 — 끝나면 실행할 수 있어요.' : '';
+    res.innerHTML = `<div class="note">위의 실행 버튼을 눌러야 쿼리가 돌아요. 원본은 많게는 천만 행 넘게 읽어 수십 초 걸릴 수 있어요.${other}</div>`;
+    document.getElementById('qSql').style.display = 'none';
+  } else {
+    renderResult(d);
+    const sqlEl = document.getElementById('qSql');
+    sqlEl.style.display = '';
+    sqlEl.textContent = d.sql.join('\n\n').replace(/\s+(FROM|WHERE|GROUP BY|ORDER BY|LIMIT)\s+/g, '\n  $1 ');
+  }
+  const notes = {
+    day_candles: '롤업은 끝난 분까지 들어 있어 원본보다 최근 1분이 빠질 수 있다. 롤업 쿼리 하나엔 롤업 컬럼 하나라 가격·거래대금·순매수 대금을 따로 묻는다.',
+    top_coins: '롤업 쿼리는 종목별로 묶을 수 없어(GROUP BY NAME 이면 빈 결과) 롤업 테이블 _CC_TICK_AMT_MIN 을 태그 메타와 조인해 직접 읽는다. 롤업은 끝난 분까지라 원본보다 조금 작다.',
+    // 보관 기간에 따라 말이 달라진다 (원본 1일이면 원본 방식은 하루치만 나온다)
+    week_candles: (() => {
+      const days = S && S.retention ? S.retention.days : 0;
+      return days && days < 7
+        ? `원본은 ${days}일만 보관한다 — 원본 방식은 최근 ${days}일치만 나온다. 롤업은 지워지지 않아 쌓인 만큼 다 나온다.`
+        : `원본 ${days ? days + '일' : '전체'} 보관 — 7일을 원본으로 집계하면 7일치 체결을 전부 읽는다. 롤업은 미리 계산해 둔 30분 칸만 읽는다.`;
+    })(),
+    count: '통계 뷰(V$CC_TICK_STAT)는 태그마다 건수를 따로 들고 있어 원본을 세지 않는다. 보관 정책이 지운 뒤에는 조금 어긋날 수 있다.',
+    last_second: 'TAG 테이블은 태그와 시각으로 데이터를 찾는다 — 전체가 수억 건이어도 1초 구간은 바로 나온다.',
+  };
+  document.getElementById('qNote').textContent = notes[q.id] || '';
+}
+
+function renderResult(d) {
+  const res = document.getElementById('qResult');
+  document.getElementById('qcWrap').style.display = d.kind === 'candles' ? '' : 'none';
+  res.innerHTML = '';
+  if (d.kind === 'candles') {
+    if (!qchart) qchart = new PriceChart(document.getElementById('qc'), { height: 240, volumeHeight: 60, format: fmtPrice, formatMoney: usd });
+    const step = d.id === 'week_candles' ? 1800000 : 300000;
+    const now = Date.now();
+    const span = d.id === 'week_candles' ? 7 * 86400000 : 86400000;
+    // 쌓인 게 질문 구간보다 짧으면 쌓인 만큼만 그린다
+    const from = d.data.length ? Math.max(now - span, d.data[0][0] - step * 3) : now - span;
+    qchart.set(Object.assign(CoinCandles.toChart({ rows: d.data, step: step }), { whales: [], from: from, to: now + step }));
+    res.innerHTML = `<div class="note" style="margin-top:6px">캔들 ${d.data.length}개 · ${d.data.length ? '쌓인 구간 ' + dur(now - d.data[0][0]) : '아직 데이터 없음'}</div>`;
+  } else if (d.kind === 'bars') {
+    const max = Math.max(1, ...d.data.map((r) => r[1]));
+    res.innerHTML = d.data.map((r) => `<div class="hbar"><span>${esc(r[0].replace(/^BINANCE(_F)?\./, (m, f) => f ? '선물 ' : '현물 ').replace(/USDT$/, ''))}</span><i style="width:${r[1] / max * 100}%"></i><span>${usd(r[1])}</span></div>`).join('') || '<div class="note">결과 없음</div>';
+  } else if (d.kind === 'number') {
+    res.innerHTML = `<div class="bignum">${nf(0).format(d.data)}<span class="muted" style="font-size:18px"> 건</span></div>`;
+  } else {
+    res.innerHTML = '<table><tr><th>시각</th><th>가격</th><th>수량</th><th>금액</th></tr>'
+      + d.data.map((r) => `<tr><td>${hms(r[0])}.${String(r[0] % 1000).padStart(3, '0')}</td><td>${fmtPrice(r[1])}</td><td style="color:${r[2] > 0 ? 'var(--up)' : 'var(--down)'}">${nf(4).format(r[2])}</td><td>${usd(r[3])}</td></tr>`).join('') + '</table>'
+      + `<div class="note" style="margin-top:6px">${d.data.length}건 — 태그(${esc(d.name || '')})와 1초 시각 범위로 바로 찾았다</div>`;
+  }
+}
+
+// ── ③ 저장 구조 ──
+function renderTables() {
+  document.getElementById('statMs').textContent = S.statMs;
+  const keep = S.retention && S.retention.days ? S.retention.days + '일 보관' : '계속 보관';
+  // 체결·호가: 수집기가 센 분당 적재 (지금 채우는 중인 분은 빼고 — 끝이 늘 푹 꺼져 보인다)
+  const cur = Math.floor(S.now / 60000) * 60000;
+  const mins = (S.status.minutes || []).filter((m) => m[0] < cur);
+  const per = { CC_TICK: mins.map((m) => [m[0], m[1]]), CC_BOOK: mins.map((m) => [m[0], m[2]]) };
+  const lastPer = (sr) => (sr.length ? sr[sr.length - 1][1] : null);
+  const tiles = [];
+  for (const t of S.tables) {
+    const sr = per[t.name] || [];
+    tiles.push({ html: `<div class="card spark-tile" title="${esc(t.why)}">`
+      + `<div class="g-key"><span>${esc(t.role)}</span><code>${t.name}</code></div>`
+      + `<div class="g-value">${big(t.rows)}<small>건</small></div>`
+      + `<canvas class="spark" data-i="${tiles.length}"></canvas>`
+      + `<div class="foot">분당 적재 · 최근 1시간${lastPer(sr) != null ? ' · 지난 1분 ' + big(lastPer(sr)) + '건' : ''} · ${t.retention ? keep : ''} · 태그 ${t.tags || 0}개</div></div>`, sr: sr });
+  }
+  document.getElementById('tables').innerHTML = tiles.map((x) => x.html).join('');
+  drawSparks(document.getElementById('tables'), tiles.map((x) => x.sr));
+
+  const label = { VALUE: '가격 (시·고·저·종)', AMT: '거래대금', SAMT: '순매수 대금' };
+  const rt = S.rollups.map((r) => {
+    const hourly = r.intervalMs >= 3600000;
+    const open = Math.floor(S.now / r.intervalMs) * r.intervalMs;   // 아직 채우는 중인 칸은 뺀다
+    const sr = (r.spark || []).filter((p) => p[0] < open);
+    return { sr: sr, html: `<div class="card spark-tile">`
+      + `<div class="g-key"><span>${label[r.column] || r.column} · ${hourly ? '1시간' : '1분'}</span><code>${r.name}</code></div>`
+      + `<div class="g-value">${big(r.rows)}<small>행</small></div>`
+      + `<canvas class="spark" data-i="0"></canvas>`
+      + `<div class="foot">${hourly ? '시간마다' : '분마다'} 요약한 체결 수 · 최근 ${hourly ? '24시간' : '1시간'}`
+      + (r.lastRun ? ` · 마지막 실행 ${hm(r.lastRun)} (${Math.round(r.elapsedMs)}ms)` : ' · 첫 실행 대기') + `</div></div>` };
+  });
+  document.getElementById('rollups').innerHTML = rt.map((x) => x.html).join('');
+  drawSparks(document.getElementById('rollups'), rt.map((x) => x.sr));
+}
+
+// 스파크라인 — neo-web 새 탭(ServerPulse)과 같은 모양: 채운 영역 + 선 + 평균 가로선 + 마지막 점
+function drawSparks(box, series) {
+  box.querySelectorAll('canvas.spark').forEach((c, i) => {
+    const item = series[i] || [];
+    const sr = Array.isArray(item) ? item : item.pts || [];
+    const zero = Array.isArray(item) || item.zero !== false;   // false 면 최솟값~최댓값으로 (변화가 작을 때)
+    const W = c.clientWidth, H = c.clientHeight, dpr = devicePixelRatio || 1;
+    c.width = W * dpr; c.height = H * dpr;
+    const g = c.getContext('2d'); g.scale(dpr, dpr);
+    if (sr.length < 2) {
+      g.fillStyle = '#727272'; g.font = '11px Pretendard, sans-serif'; g.textBaseline = 'middle';
+      g.fillText('데이터를 모으는 중', 0, H / 2); return;
+    }
+    const t0 = sr[0][0], t1 = sr[sr.length - 1][0];
+    let max = -Infinity, min = Infinity, sum = 0; for (const p of sr) { max = Math.max(max, p[1]); min = Math.min(min, p[1]); sum += p[1]; }
+    let lo = 0, hi = max * 1.15 || 1;
+    if (!zero) { const pad = (max - min) * 0.2 || Math.abs(max) * 0.001 || 1; lo = min - pad; hi = max + pad; }
+    const X = (t) => 2 + (t1 === t0 ? 0 : (t - t0) / (t1 - t0)) * (W - 6), Y = (v) => H - 3 - (v - lo) / (hi - lo) * (H - 8);
+    const avg = Y(sum / sr.length);
+    g.strokeStyle = 'rgba(255, 255, 255, .08)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, Math.round(avg) + 0.5); g.lineTo(W, Math.round(avg) + 0.5); g.stroke();
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(109, 139, 255, .32)'); grad.addColorStop(1, 'rgba(109, 139, 255, 0)');
+    g.beginPath(); g.moveTo(X(sr[0][0]), H);
+    for (const p of sr) g.lineTo(X(p[0]), Y(p[1]));
+    g.lineTo(X(t1), H); g.closePath(); g.fillStyle = grad; g.fill();
+    g.beginPath(); sr.forEach((p, k) => (k ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))));
+    g.strokeStyle = '#8ea4ff'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
+    g.beginPath(); g.arc(X(t1), Y(sr[sr.length - 1][1]), 3, 0, Math.PI * 2); g.fillStyle = '#a9b8ff'; g.fill();
+  });
+}
+
+// ── ④ 데이터 수명 ──
+function renderLife() {
+  const now = S.now;
+  const tick = S.tables.find((t) => t.name === 'CC_TICK') || {};
+  const rmin = S.rollups.filter((r) => r.first).map((r) => r.first);
+  const rollFirst = rmin.length ? Math.min(...rmin) : null;
+  const days = S.retention && S.retention.days || 0;
+  // 구간은 눈금이 정수 일로 떨어지게 단위(1·2·5일)의 배수로 올린다
+  const rawDays = Math.max((days || 1) * 3, rollFirst ? (now - rollFirst) / 86400000 : 0) + 0.5;
+  const tickStep = rawDays > 12 ? 5 : rawDays > 6 ? 2 : 1;
+  const span = Math.ceil(rawDays / tickStep) * tickStep * 86400000;
+  const pct = (t) => Math.max(0, Math.min(100, (1 - (now - t) / span) * 100));
+  // 한 줄 = 한 종류의 데이터. 실선 막대 = 지금 들어 있는 구간, 점선 칸 = 머물 수 있는 구간.
+  // 지워지는 경계와 그 왼쪽(지워진 구간)은 원본 줄 안에만 그린다 — 롤업 줄까지 내려 그리면 롤업도 지워지는 것처럼 읽힌다.
+  const lane = (name, sub, o) => {
+    const keep = o.keepFrom == null ? 0 : o.keepFrom;
+    const bar = o.from ? Math.min(pct(o.from), 99.4) : null;
+    return `<div class="lane"><div class="name">${name}<small>${sub}</small></div><div class="track">`
+      + (o.cutPct != null ? `<em class="gone" style="width:${o.cutPct}%"><span>${o.goneText}</span></em><u class="cut" style="left:${o.cutPct}%"></u>` : '')
+      + `<b class="win" style="left:${keep}%"></b>`
+      + (o.forever ? '<b class="forever">←</b>' : '')
+      + (bar != null ? `<i style="left:${bar}%"></i>` : '')
+      + `<span class="lbl" style="right:calc(${bar != null ? 100 - bar : 0}% + 8px)">${o.text}</span></div></div>`;
+  };
+  const job = S.retention && S.retention.tables && S.retention.tables[0] && S.retention.tables[0].job;
+  const cutPct = days ? pct(now - days * 86400000) : null;
+  let html = '<div style="position:relative">';
+  html += lane('원본 체결·호가', days ? `${days}일 보관 · 1시간마다 정리` : '보관 기간 없음 · 지우지 않음', {
+    from: tick.first, keepFrom: cutPct,
+    text: (tick.first ? '지금 ' + dur(now - tick.first) + '치' : '아직 없음') + (days ? ` · 최대 ${days}일` : ''),
+    cutPct: cutPct, goneText: `${days}일 넘은 원본은 지워져요` + (job && job.lastDeleted ? ' · 마지막 정리 ' + String(job.lastDeleted).slice(11, 16) : ''),
+    forever: !days,
+  });
+  html += lane('롤업 (분·시)', '지우지 않음 · 계속 쌓임', {
+    from: rollFirst, keepFrom: 0, forever: true,
+    text: (rollFirst ? '지금 ' + dur(now - rollFirst) + '치' : '첫 실행 대기') + ' · 원본이 지워져도 남아요',
+  });
+  html += '</div>';
+  // 눈금은 가장 오래된 쪽부터 '지금'까지 tickStep 간격 — space-between 배치와 막대 비율이 맞는다
+  const ticks = []; for (let k = Math.round(span / 86400000); k >= 0; k -= tickStep) ticks.push(k ? k + '일 전' : '지금');
+  html += `<div class="axis"><div></div><div class="ticks">${ticks.map((t) => '<span>' + t + '</span>').join('')}</div></div>`;
+  document.getElementById('life').innerHTML = html;
+}
+
+// ── ⑤ 부하 ──
+function renderLoad() {
+  const r = S.status.rate || {}, t = S.status.total || {};
+  document.getElementById('kRate').textContent = nf(0).format((r.trades || 0) + (r.book || 0));
+  document.getElementById('kRateSplit').textContent = '체결 ' + nf(0).format(r.trades || 0) + ' · 호가 ' + nf(0).format(r.book || 0);
+  const tb = Object.fromEntries(S.tables.map((x) => [x.name, x]));
+  const tr = (tb.CC_TICK && tb.CC_TICK.rows) || 0, br = (tb.CC_BOOK && tb.CC_BOOK.rows) || 0;
+  document.getElementById('kTotal').textContent = big(tr + br);
+  document.getElementById('kTotalSub').textContent = `체결 ${big(tr)} · 호가 ${big(br)}`;
+  const lag = S.rollups.find((x) => /_ROLLUP_MIN$/.test(x.name));
+  document.getElementById('kLag').textContent = lag && lag.lagMs != null ? dur(lag.lagMs) : '-';
+  document.getElementById('kLagSub').textContent = '분 롤업이 원본보다 늦은 정도 · 2분 안쪽이 정상';
+  document.getElementById('kStat').textContent = S.statMs + 'ms';
+  // 카드마다 스파크라인 — 이 화면이 3초마다 받은 값을 최근 5분치 모은 것
+  const H = history.filter((h) => h.t >= S.now - 300000);
+  const ser = (f) => H.filter((h) => f(h) != null).map((h) => [h.t, f(h)]);
+  drawSparks(document.querySelector('.load'), [
+    { pts: ser((h) => h.trades + h.book), zero: false },
+    { pts: ser((h) => h.rows), zero: false },   // 수백만 행에서 조금씩 는다 — 0 부터 그리면 납작하다
+    ser((h) => h.lag),
+    { pts: ser((h) => h.stat), zero: false },
+  ]);
+}
+
+// ── 폴링: inside API 하나 (서버 버그 때문에 호출 수를 줄인다 — README) ──
+async function poll() {
+  try {
+    const r = await fetch(API + 'inside', { cache: 'no-store' }).then((x) => x.json());
+    if (r.ok) {
+      S = r.data;
+      const rt = S.status.rate || {};
+      const tbs = Object.fromEntries(S.tables.map((x) => [x.name, x]));
+      const lagR = S.rollups.find((x) => /_ROLLUP_MIN$/.test(x.name));
+      history.push({ t: S.now, trades: rt.trades || 0, book: rt.book || 0,
+        rows: ((tbs.CC_TICK && tbs.CC_TICK.rows) || 0) + ((tbs.CC_BOOK && tbs.CC_BOOK.rows) || 0),
+        lag: lagR && lagR.lagMs != null ? lagR.lagMs : null, stat: S.statMs });
+      while (history.length && history[history.length - 1].t - history[0].t > 300000) history.shift();
+      renderFlow(); renderTables(); renderLife(); renderLoad();
+    }
+  } catch (e) { console.warn('inside', e); }
+  setTimeout(poll, 3000);
+}
+poll();
+pick('day_candles');
+// 질문 제목의 코인 이름 (수집 설정에 따라 다르다)
+fetch(API + 'theater?id=list', { cache: 'no-store' }).then((x) => x.json()).then((r) => {
+  if (!r.ok) return;
+  PICKS = r.data.picks || [];
+  const tags = r.data.tags || [];
+  qsel.name = qsel.name || r.data.defaultTag || (tags[0] && tags[0].tag) || null;
+  const sel = document.getElementById('qCoin');
+  sel.innerHTML = tags.map((t) => `<option value="${esc(t.tag)}"${t.tag === qsel.name ? ' selected' : ''}>${esc(t.label)}${t.collecting ? '' : ' · 수집 안 함'} — ${big(t.rows)}건</option>`).join('');
+  sel.onchange = () => { qsel.name = sel.value; renderStage(); };
+  renderStage();
+}).catch(() => {});
+</script>
+</body>
+</html>

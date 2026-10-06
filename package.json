@@ -1,0 +1,14 @@
+{
+    "name": "neo-pkg-coin-collector",
+    "version": "0.5.1",
+    "description": "Coin Collector — streams Binance spot & futures trades and order-book changes of the coins you pick into Machbase (CC_TICK with minute/hour rollups, CC_BOOK), with whale alerts, a mock trading battle and a DB inside view",
+    "minServerVersion": "8.7.0",
+    "scripts": {
+        "install": "./scripts/install.js",
+        "start": "./scripts/start.js",
+        "stop": "./scripts/stop.js",
+        "uninstall": "./scripts/uninstall.js"
+    },
+    "dependencies": {},
+    "private": true
+}

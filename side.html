@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coin Collector — Side</title>
+<link rel="stylesheet" href="lib/graphite.css">
+<style>
+  /* 공통 톤은 lib/graphite.css — 색 있는 상태는 한 톤(--tone), 빨강은 오류에만 */
+  :root { --card: var(--surface); --on: var(--tone); --off: var(--bad); --warn: #c9a14a; }
+  body { padding: 12px; }
+  a { color: inherit; text-decoration: none; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+  .muted { color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* 상태 */
+  .hero .top { display: flex; align-items: center; gap: 10px; }
+  .state { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; }
+  .lamp { width: 8px; height: 8px; border-radius: 50%; background: #555; flex: none; }
+  .lamp.on { background: var(--on); box-shadow: 0 0 0 4px var(--tone-faint); animation: beat 1.6s ease-in-out infinite; }
+  .lamp.off { background: #6b6b6b; }
+  .lamp.warn { background: var(--warn); }
+  .lamp.bad { background: var(--off); }
+  @keyframes beat { 50% { box-shadow: 0 0 0 7px rgba(109, 139, 255, 0); } }
+  .toggle { margin-left: auto; border: 1px solid var(--line-strong); background: transparent; border-radius: 4px; padding: 4px 12px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text); }
+  .toggle.start { background: var(--tone); border-color: var(--tone); color: var(--tone-ink); }
+  .toggle.start:hover:not(:disabled) { background: var(--tone-hover); }
+  .toggle.stop:hover:not(:disabled) { background: rgba(255, 255, 255, .06); }
+  .toggle:disabled { opacity: .45; cursor: default; }
+  .big { margin-top: 10px; font-size: 26px; font-weight: 500; letter-spacing: -.02em; line-height: 1.25; font-variant-numeric: tabular-nums; }
+  .big small { font-size: 13px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: 4px; }
+  .sub { margin-top: 2px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .why { margin-top: 10px; font-size: 12px; color: #fca5a5; }
+
+  .chips { display: flex; gap: 6px; margin-top: 12px; }
+  .chip { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 4px; border-radius: 4px;
+    background: rgba(255, 255, 255, .04); font-size: 11.5px; color: var(--dim); white-space: nowrap; }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; background: #555; }
+  .chip.ok { color: var(--muted); } .chip.ok i { background: var(--tone); } .chip.bad i { background: var(--off); } .chip.bad { color: #fca5a5; }
+
+  /* 줄 */
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row + .row { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .row .ic { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; flex: none; background: var(--tone-faint); color: var(--tone-hover); }
+  .row .ic svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .row .t { flex: 1; min-width: 0; }
+  .row .t b { display: block; font-size: 13px; font-weight: 500; }
+  .row .t span { font-size: 12px; color: var(--dim); }
+  .go { font-size: 12px; color: var(--dim); white-space: nowrap; }
+  .row:hover .go { color: var(--text); }
+
+  .label { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .seg { display: flex; background: rgba(0, 0, 0, .22); border-radius: 6px; padding: 2px; gap: 2px; }
+  .seg button { flex: 1; border: 0; background: transparent; color: var(--muted); padding: 4px 2px; font: inherit; font-size: 12px; border-radius: 4px; cursor: pointer; }
+  .seg button.on { background: rgba(255, 255, 255, .1); color: var(--text); }
+  .seg button:disabled { cursor: default; }
+  .hint { margin-top: 8px; font-size: 12px; color: var(--dim); }
+  .hint b { color: var(--text-2); font-weight: 500; }
+
+  /* 비우기 */
+  .danger-link { display: block; width: 100%; margin-top: 6px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; padding: 8px; cursor: pointer; border-radius: 8px; }
+  .danger-link:hover:not(:disabled) { color: #fca5a5; background: rgba(240, 69, 79, .08); }
+  .danger-link:disabled { cursor: default; opacity: .6; }
+  .confirm { border-color: rgba(240, 69, 79, .5); }
+  .confirm p { margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+  .confirm p b { color: var(--text); }
+  .confirm .btns { display: flex; gap: 6px; }
+  .confirm button { flex: 1; border: 0; border-radius: 4px; padding: 6px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; }
+  .confirm .yes { background: var(--off); color: #fff; }
+  .confirm .no { background: transparent; border: 1px solid var(--line-strong); color: var(--text); }
+  .progress { margin-top: 6px; font-size: 12px; color: var(--muted); text-align: center; }
+  .progress.bad { color: #fca5a5; } .progress.ok { color: var(--tone-hover); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="card hero">
+  <div class="top">
+    <div class="state"><span class="lamp" id="lamp"></span><span id="stateText">확인 중…</span></div>
+    <button class="toggle" id="toggle" hidden></button>
+  </div>
+  <div class="big" id="rate">-</div>
+  <div class="sub" id="sub">&nbsp;</div>
+  <div class="why" id="why" hidden></div>
+  <div class="chips">
+    <span class="chip" id="cSpot"><i></i>현물</span>
+    <span class="chip" id="cFut"><i></i>선물</span>
+    <span class="chip" id="cDb"><i></i>DB</span>
+  </div>
+</div>
+
+<div class="card">
+  <a class="row" href="settings.html" data-page="settings.html">
+    <span class="ic"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg></span>
+    <span class="t"><b id="coins">-</b><span id="coinsSub">&nbsp;</span></span>
+    <span class="go">바꾸기 ›</span>
+  </a>
+  <a class="row" href="whales.html" data-page="whales.html">
+    <span class="ic"><svg viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg></span>
+    <span class="t"><b>고래</b><span>큰 체결 몰림 실시간 감지</span></span>
+    <span class="go">열기 ›</span>
+  </a>
+  <a class="row" href="game.html" data-page="game.html">
+    <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M8 15v-4M12 15V7M16 15v-6"/></svg></span>
+    <span class="t"><b>모의투자</b><span>실제 체결가로 10분 라운드</span></span>
+    <span class="go">열기 ›</span>
+  </a>
+  <a class="row" href="main.html" data-page="main.html">
+    <span class="ic"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14a8 3 0 0 0 16 0V5"/><path d="M4 12a8 3 0 0 0 16 0"/></svg></span>
+    <span class="t"><b>DB 인사이드</b><span>쌓이는 모습과 쿼리 속도 보기</span></span>
+    <span class="go">열기 ›</span>
+  </a>
+</div>
+
+<div class="hint" id="navHint" hidden style="margin:-4px 2px 10px"></div>
+
+<div class="card">
+  <div class="label">원본 보관 기간</div>
+  <div class="seg" id="retain"></div>
+  <div class="hint" id="retainHint">&nbsp;</div>
+</div>
+
+<div class="card confirm" id="confirm" hidden>
+  <p><b>체결·호가 데이터를 모두 지워요.</b><br>되돌릴 수 없어요. 보관 기간과 코인 설정은 그대로예요.<br><span id="confirmNote"></span></p>
+  <div class="btns"><button class="no" id="noBtn">취소</button><button class="yes" id="yesBtn">지우기</button></div>
+</div>
+<button class="danger-link" id="clearBtn">데이터 비우기</button>
+<div class="progress" id="progress" hidden></div>
+
+<script>
+'use strict';
+const API = 'cgi-bin/api/';
+const fmt = (n) => new Intl.NumberFormat('en-US').format(Math.round(n || 0));
+const big = (n) => !n ? '0' : n >= 1e8 ? (n / 1e8).toFixed(1) + '억' : n >= 1e4 ? fmt(n / 1e4) + '만' : fmt(n);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const $ = (id) => document.getElementById(id);
+const getJson = (path) => fetch(API + path, { cache: 'no-store' }).then((x) => x.json());
+// 요청은 끝까지 기다린다 — 응답 도중 끊으면 서버가 죽을 수 있다 (README 의 서버 버그). 호출 수도 아낀다.
+
+let S = {};            // 수집기 상태 (data/status.json)
+let svc = null;        // 서비스 상태 running|starting|stopped|missing
+let busy = false;      // 시작·중지 요청 중
+let clearing = false;  // 비우는 중
+
+// ── 상태 ──
+function collecting() { return svc === 'running' && S.running && !S.idle; }
+function render() {
+  const rate = S.rate || {}, mk = S.markets || {}, fs = S.feeds || {};
+  let lamp = 'off', text = '멈춤', why = '';
+  if (svc === 'missing') { lamp = 'bad'; text = '서비스 없음'; why = '패키지를 다시 설치해 주세요.'; }
+  else if (clearing) { lamp = 'warn'; text = '비우는 중'; }
+  else if (busy) { lamp = 'warn'; text = svc === 'running' ? '멈추는 중…' : '켜는 중…'; }
+  else if (svc === 'running' || svc === 'starting') {
+    if (collecting()) { lamp = 'on'; text = '수집 중'; }
+    else { lamp = 'warn'; text = '시작하는 중'; }
+    if (S.db && S.db.connected === false && S.db.lastError) { lamp = 'bad'; text = 'DB 연결 안 됨'; why = S.db.lastError; }
+  }
+  $('lamp').className = 'lamp ' + lamp;
+  $('stateText').textContent = text;
+  $('why').hidden = !why; $('why').textContent = why;
+
+  // 켜기·끄기 한 버튼
+  const up = svc === 'running' || svc === 'starting';
+  const t = $('toggle');
+  t.hidden = svc == null || svc === 'missing';
+  t.className = 'toggle ' + (up ? 'stop' : 'start');
+  t.textContent = up ? '멈추기' : '수집 시작';
+  t.disabled = busy || clearing;
+
+  const now = collecting() ? (rate.trades || 0) + (rate.book || 0) : 0;
+  $('rate').innerHTML = collecting() ? fmt(now) + '<small>건/초</small>' : '<span class="muted">0</span><small>건/초</small>';
+  // 지금 테이블에 들어 있는 행 (보관 기간이 지난 건 빠진다 — 수집기가 센 누적과 다르다)
+  const rows = S.rows || {};
+  $('sub').innerHTML = rows.CC_TICK == null && rows.CC_BOOK == null ? '테이블 행 수를 못 읽었어요'
+    : `테이블에 <b style="color:var(--text)">${big((rows.CC_TICK || 0) + (rows.CC_BOOK || 0))}</b>행 · 체결 ${big(rows.CC_TICK)} · 호가 ${big(rows.CC_BOOK)}`
+      + (S.dropped ? ` · ${big(S.dropped)}건 놓침` : '');
+
+  const chip = (id, f, label) => {
+    const el = $(id);
+    const on = collecting() && f && f.connected;
+    const off = !f || f.enabled === false;
+    el.className = 'chip' + (on ? ' ok' : collecting() && !off ? ' bad' : '');
+    el.title = off ? label + ' — 고른 코인 없음' : f.lastError || '';
+    el.lastChild.textContent = label + (off ? ' 꺼짐' : '');
+  };
+  chip('cSpot', fs.spot, '현물'); chip('cFut', fs.futures, '선물');
+  const dbOk = S.db && S.db.connected;
+  $('cDb').className = 'chip' + (collecting() ? (dbOk ? ' ok' : ' bad') : '');
+
+  if (mk.coins != null) {
+    $('coins').textContent = `코인 ${fmt(mk.coins)}개` + (mk.source === 'file' ? '' : ' (기본)');
+    $('coinsSub').textContent = `현물 ${mk.spot} · 선물 ${mk.futures} · 호가 ${mk.spotDepth + mk.futuresDepth}`;
+  } else { $('coins').textContent = '수집할 코인'; $('coinsSub').textContent = '켜면 보여요'; }
+  renderRetainHint();
+}
+
+async function poll() {
+  try { const r = await getJson('status'); if (r.ok) S = r.data; } catch (_) {}
+  try { const r = await getJson('control'); if (r.ok) { if (!busy) svc = r.data.service; showClear(r.data); } } catch (_) {}
+  render();
+  setTimeout(poll, 5000);
+}
+
+// ── 켜기·끄기 ──
+$('toggle').onclick = async () => {
+  const up = svc === 'running' || svc === 'starting';
+  busy = true; render();
+  try {
+    const r = await fetch(API + 'control', { method: 'POST', body: JSON.stringify({ action: up ? 'stop' : 'start' }) }).then((x) => x.json());
+    if (!r.ok) throw new Error(r.reason);
+    svc = r.data.service;
+  } catch (e) {
+    $('why').hidden = false; $('why').textContent = (up ? '멈추지' : '켜지') + ' 못했어요 — ' + (e.message || e);
+  }
+  busy = false; render();
+};
+
+// ── 보관 기간 ──
+const ROW_BYTES = 40;   // 1행 약 40바이트 (실측: 하루 4~6억 행에 약 17GB)
+const size = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + 'GB' : Math.max(1, Math.round(b / 1e6)) + 'MB';
+const CHOICES = [[1, '1일'], [7, '7일'], [30, '30일'], [0, '계속']];
+let R = null;
+function renderRetain() {
+  const el = $('retain'); el.innerHTML = '';
+  for (const [v, label] of CHOICES) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (R && v === R.days) b.className = 'on';
+    b.onclick = async () => {
+      if (R && v === R.days) return;
+      el.querySelectorAll('button').forEach((x) => { x.disabled = true; });
+      try {
+        const r = await fetch(API + 'retention', { method: 'POST', body: JSON.stringify({ days: v }) }).then((x) => x.json());
+        if (!r.ok) throw new Error(r.reason);
+        R = r.data;
+      } catch (e) { $('retainHint').textContent = '바꾸지 못했어요 — ' + (e.message || e); }
+      renderRetain();
+    };
+    el.appendChild(b);
+  }
+  renderRetainHint();
+}
+function renderRetainHint() {
+  if (!R) return;
+  const now = collecting() ? (S.rate.trades || 0) + (S.rate.book || 0) : 0;
+  const grow = now ? `하루에 약 <b>${size(now * 86400 * ROW_BYTES)}</b>씩 쌓여요.` : '지금은 수집하지 않아 늘지 않아요.';
+  $('retainHint').innerHTML = grow + ' ' + (R.days ? `${R.days}일 지난 데이터는 자동으로 지워요.` : '지우지 않고 계속 둬요.')
+    + ' 분·시 요약(롤업)은 계속 남아요.';
+}
+getJson('retention').then((r) => { if (r.ok) { R = r.data; renderRetain(); } }).catch(() => {});
+
+// ── 데이터 비우기 ──
+// 지우기는 수집기가 한다 (호가가 많으면 몇 분). 수집 중이었으면 이어서 수집하고, 멈춰 있었으면 지운 뒤 다시 멈춘다.
+let askedAt = 0;
+$('clearBtn').onclick = () => {
+  $('confirm').hidden = false; $('clearBtn').hidden = true;
+  $('confirmNote').textContent = collecting() ? '지운 뒤 이어서 수집해요.' : '수집은 멈춘 그대로예요.';
+};
+$('noBtn').onclick = () => { $('confirm').hidden = true; $('clearBtn').hidden = false; };
+$('yesBtn').onclick = async () => {
+  $('confirm').hidden = true; $('clearBtn').hidden = false;
+  askedAt = Date.now(); clearing = true; render();
+  setProgress('지우기를 요청했어요…');
+  try {
+    const r = await fetch(API + 'control', { method: 'POST', body: JSON.stringify({ action: 'clear', confirm: 'CLEAR' }) }).then((x) => x.json());
+    if (!r.ok) throw new Error(r.reason);
+    svc = r.data.service;
+  } catch (e) { clearing = false; setProgress('지우지 못했어요 — ' + (e.message || e), 'bad'); render(); return; }
+  watch();
+};
+function setProgress(text, cls) {
+  const p = $('progress'); p.hidden = !text; p.className = 'progress' + (cls ? ' ' + cls : ''); p.textContent = text || '';
+  $('clearBtn').disabled = clearing;
+}
+const STEP = { '적재 멈춤': '수집을 잠깐 멈췄어요', '테이블 다시 만드는 중': '빈 테이블을 만드는 중' };
+function showClear(d) {
+  const p = d && d.progress;
+  if (!p || !p.startedAt) return;
+  if (p.state === 'running' || d.pending) {
+    clearing = true;
+    const step = p.state === 'running' ? (STEP[p.step] || p.step.replace(' 지우는 중', ' 지우는 중')) : '수집기가 받기를 기다리는 중';
+    setProgress(`${step} · ${Math.round((Date.now() - (askedAt || p.startedAt)) / 1000)}초 — 창을 닫아도 계속돼요`);
+    return;
+  }
+  // 이번 화면에서 요청한 것의 결과만 보여 준다 (지난 결과를 매번 띄우지 않는다)
+  if (!askedAt || p.startedAt < askedAt - 5000) { if (clearing) { clearing = false; render(); } return; }
+  clearing = false;
+  if (p.state === 'done') setProgress(`비웠어요 (${(p.ms / 1000).toFixed(1)}초)`, 'ok');
+  else setProgress(/Resource busy/.test(p.error || '') ? '테이블이 다른 작업에 잡혀 있어 못 지웠어요. 서버를 다시 켠 뒤 다시 해 보세요.' : '지우지 못했어요 — ' + p.error, 'bad');
+  askedAt = 0;
+}
+async function watch() {
+  try { const r = await getJson('control'); if (r.ok) { svc = r.data.service; showClear(r.data); } } catch (_) {}
+  render();
+  if (clearing) setTimeout(watch, 2000);
+}
+
+// ── 메인 탭 화면 바꾸기 ──
+// 새 창을 열지 않고 neo-web 의 이 패키지 탭(iframe title "App: <패키지>")을 그 화면으로 바꾼다. 같은 origin 이라 직접 닿는다.
+// 사이드 패널을 누르면 neo-web 이 이 패키지 탭을 앞으로 가져온다 — 탭을 처음 여는 경우엔 iframe 이 생길 때까지 잠깐 기다린다.
+const PKG = location.pathname.split('/')[2];   // /public/<패키지>/side.html
+function mainFrame() {
+  try { return window.parent.document.querySelector('iframe[title="App: ' + PKG + '"]'); } catch (_) { return null; }
+}
+function openInMain(page) {
+  const url = new URL(page, location.href).href;
+  let tries = 0;
+  const go = () => {
+    const f = mainFrame();
+    if (f && f.contentWindow) {
+      try { if (f.contentWindow.location.href !== url) f.contentWindow.location.href = url; } catch (_) { f.src = url; }
+      $('navHint').hidden = true;
+      return;
+    }
+    if (++tries < 15) { setTimeout(go, 100); return; }
+    $('navHint').hidden = false;
+    $('navHint').textContent = '메인 탭이 열려 있지 않아요. 앱스토어에서 이 패키지를 열면 거기서 바뀌어요.';
+  };
+  go();
+}
+document.querySelectorAll('[data-page]').forEach((a) => a.addEventListener('click', (e) => {
+  if (window.parent === window) return;   // neo-web 밖에서 side.html 을 바로 연 경우는 그냥 이동
+  e.preventDefault();
+  openInMain(a.dataset.page);
+}));
+
+poll();
+</script>
+</body>
+</html>

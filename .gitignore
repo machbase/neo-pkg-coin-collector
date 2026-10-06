@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+
+# 서버마다 다른 설정 — DB 접속(db.json), 수집 종목(markets.json)
+cgi-bin/conf.d/*.json
+# 수집기가 쓰는 상태 파일
+data/*.json*
+dist/

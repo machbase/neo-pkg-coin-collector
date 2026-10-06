@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coin Collector — Battle</title>
+<link rel="stylesheet" href="lib/graphite.css">
+<style>
+  /* 공통 톤은 lib/graphite.css. 시세의 상승 빨강·하락 파랑만 관례대로 */
+  :root { --up: #f0454f; --down: #3b82f6; --up-bg: rgba(240, 69, 79, .3); --down-bg: rgba(59, 130, 246, .3); }
+  .g-page { max-width: 1280px; gap: 24px; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; align-items: start; }
+  @media (max-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .card-head .r { margin-left: auto; }
+
+  /* 라운드 시계 */
+  .clock { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .clock .t { font-size: 20px; font-weight: 500; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .clock .t.hot { color: var(--up); }
+  .clock .bar { width: 140px; height: 4px; border-radius: 99px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+  .clock .bar i { display: block; height: 100%; background: var(--tone); }
+  .me { font-size: 12px; color: var(--muted); cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+  .me:hover { background: rgba(255, 255, 255, .06); }
+  .me b { color: var(--text); font-weight: 500; }
+
+  /* 지갑 */
+  .wallet { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 800px) { .wallet { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .wallet .g-tile { display: flex; flex-direction: column; gap: 4px; }
+
+  /* 차트 */
+  .chart-wrap { padding: 8px 6px 6px; }
+  .chart-head .stat { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .chart-head .stat b { color: var(--text-2); font-weight: 500; }
+  .ctitle { font-size: 14px; color: var(--text); font-weight: 500; }
+
+  /* 주문 */
+  .trade { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  @media (max-width: 820px) { .trade { grid-template-columns: 1fr; } }
+  .picker { border-right: 1px solid var(--line); padding: 10px; max-height: 470px; overflow-y: auto; }
+  .picker .grp { font-size: 11px; color: var(--dim); margin: 10px 2px 6px; }
+  .picker .grp:first-child { margin-top: 0; }
+  .chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 4px; }
+  .chip { border-radius: 4px; padding: 5px 7px; background: rgba(255, 255, 255, .04); cursor: pointer; border: 1px solid transparent; min-width: 0; }
+  .chip:hover { background: rgba(255, 255, 255, .07); }
+  .chip.sel { border-color: var(--tone-soft); background: var(--tone-faint); }
+  .chip.held { box-shadow: inset 2px 0 0 var(--tone); }
+  .chip .s { font-weight: 500; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .c { font-size: 10.5px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--dim); }
+  .ticket { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .ticket .coin { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .ticket .coin .n { font-size: 18px; font-weight: 500; }
+  .ticket .coin .p { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; border-radius: 4px; padding: 0 6px; }
+  @keyframes f-up { from { background: var(--up-bg); } to { background: transparent; } }
+  @keyframes f-down { from { background: var(--down-bg); } to { background: transparent; } }
+  .p.f-up { animation: f-up .6s ease-out; } .p.f-down { animation: f-down .6s ease-out; }
+  .dir { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .dir button { appearance: none; padding: 9px; font: inherit; font-size: 14px; font-weight: 500; border-radius: 4px; border: 1px solid var(--line-strong); background: transparent; color: var(--muted); cursor: pointer; }
+  .dir .long.on { background: var(--up); border-color: var(--up); color: #fff; }
+  .dir .short.on { background: var(--down); border-color: var(--down); color: #fff; }
+  .lbl { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .g-seg.full { display: flex; } .g-seg.full button { flex: 1; }
+  input[type=range] { width: 100%; accent-color: var(--tone); }
+  .preview { font-size: 12px; color: var(--muted); line-height: 1.7; font-variant-numeric: tabular-nums; }
+  .preview b { color: var(--text-2); font-weight: 500; }
+  #go { padding: 9px; font-size: 14px; }
+  .msg { font-size: 12px; min-height: 16px; }
+  .msg.err { color: #fca5a5; } .msg.ok { color: var(--tone-hover); }
+
+  /* 표 */
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 7px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  th { color: var(--dim); font-weight: 500; font-size: 11.5px; }
+  th:first-child, td:first-child { text-align: left; }
+  td .danger { color: var(--up); }
+  td .g-btn { padding: 2px 10px; font-size: 12px; }
+  .empty { padding: 22px 14px; color: var(--dim); font-size: 12.5px; text-align: center; }
+
+  /* 순위·소식 */
+  .rank { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .rank.me { background: var(--tone-faint); }
+  .rank .no { color: var(--dim); text-align: center; font-variant-numeric: tabular-nums; }
+  .rank:nth-child(-n+3) .no { color: var(--tone-hover); font-weight: 600; }
+  .rank .nick { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank .sub { font-size: 11px; color: var(--dim); }
+  .rank .eq { text-align: right; font-variant-numeric: tabular-nums; }
+  .rank .eq small { display: block; font-size: 11.5px; }
+  #ranking { max-height: 420px; overflow-y: auto; }
+  #events { max-height: 320px; overflow-y: auto; }
+  .ev { padding: 7px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
+  .ev .t { color: var(--dim); margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .ev .tag { font-size: 10.5px; padding: 0 5px; border-radius: 3px; background: rgba(255, 255, 255, .06); color: var(--muted); margin-right: 4px; }
+  .ev .tag.liq { color: #fca5a5; background: var(--bad-faint); }
+  .ev .tag.whale { color: var(--tone-hover); background: var(--tone-faint); }
+
+  /* 고래 따라 타기 */
+  #follow { position: fixed; right: 24px; bottom: 24px; z-index: 11; display: none; padding: 10px 16px; font-size: 14px; }
+  #follow.show { display: block; }
+
+  /* 알림·모달 */
+  #toast { position: fixed; left: 50%; top: 64px; z-index: 20; transform: translate(-50%, -12px); opacity: 0; visibility: hidden; pointer-events: none;
+    background: var(--surface); border: 1px solid var(--tone-soft); border-radius: 8px; padding: 12px 18px; min-width: 300px; box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+    transition: opacity .2s, transform .25s, visibility 0s linear .25s; }
+  #toast.show { opacity: 1; visibility: visible; transform: translate(-50%, 0); transition: opacity .2s, transform .25s; }
+  #toast .k { font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--tone-hover); }
+  #toast .v { font-size: 16px; font-weight: 500; margin-top: 2px; }
+  #toast .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .modal { position: fixed; inset: 0; background: rgba(10, 10, 12, .7); display: none; align-items: center; justify-content: center; z-index: 30; padding: 16px; }
+  .modal.show { display: flex; }
+  .modal .box { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 20px; width: min(600px, 100%); }
+  .modal h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
+  .modal input { background: rgba(255, 255, 255, .06); color: var(--text); border: 1px solid transparent; border-radius: 4px; padding: 7px 10px; font: inherit; flex: 1; outline: none; }
+  .modal input:focus { border-color: var(--tone-soft); }
+  .podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 8px; align-items: end; margin: 16px 0; text-align: center; }
+  .podium > div { background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 12px 6px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-width: 0; }
+  .podium .p1 { min-height: 140px; border-color: var(--tone-soft); } .podium .p2 { min-height: 118px; } .podium .p3 { min-height: 104px; }
+  .podium .no { font-size: 11px; color: var(--tone-hover); letter-spacing: .09em; }
+  .podium .nick { font-weight: 500; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .podium .ret { font-variant-numeric: tabular-nums; }
+  .vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; background: var(--well); border: 1px solid var(--line); border-radius: 6px; padding: 12px; text-align: center; margin-bottom: 14px; font-size: 12px; color: var(--muted); }
+  .vs b { display: block; font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); }
+  .vs .x { color: var(--dim); }
+</style>
+</head>
+<body>
+<header class="g-top">
+  <h1><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>코인 수집기</h1>
+  <nav class="g-tabs">
+    <a href="main.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg> DB 인사이드</a>
+    <a href="whales.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg> 고래</a>
+    <a href="game.html" class="on"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/><path d="M17 3v2"/><rect width="4" height="8" x="15" y="5" rx="1"/><path d="M17 13v3"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/></svg> 모의투자</a>
+    <a href="settings.html"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M7 12h10"/><path d="M10 18h4"/></svg> 수집 설정</a>
+  </nav>
+</header>
+
+<main class="g-page">
+  <section>
+    <div class="g-head"><h2>모의투자</h2><small>실제 바이낸스 체결가로 · 10분 라운드 · 라운드마다 $10,000</small></div>
+    <div style="display:flex; align-items:center; gap:12px; margin:-4px 0 12px">
+      <span class="me" id="me" title="닉네임 바꾸기"></span>
+      <div class="clock"><span class="muted" id="roundNo" style="font-size:12px"></span><div class="bar"><i id="roundBar" style="width:0"></i></div><span class="t" id="clock">--:--</span></div>
+    </div>
+    <div class="wallet">
+      <div class="g-tile"><div class="g-key"><span>내 자산</span></div><div class="g-value" id="wEquity">$10,000.00</div><div class="g-sub" id="wEquitySub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key"><span>수익률</span></div><div class="g-value" id="wRet">0.00%</div><div class="g-sub">이번 라운드</div></div>
+      <div class="g-tile"><div class="g-key"><span>현금</span></div><div class="g-value" id="wCash">$10,000</div><div class="g-sub" id="wCashSub">&nbsp;</div></div>
+      <div class="g-tile"><div class="g-key"><span>순위</span></div><div class="g-value" id="wRank">-</div><div class="g-sub" id="wRankSub">&nbsp;</div></div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <div class="col">
+      <div class="g-card">
+        <div class="card-head">내 포지션</div>
+        <div id="positions"><div class="empty">아직 없어요. 코인을 고르고 진입하세요.</div></div>
+      </div>
+      <div class="g-card">
+        <div class="card-head"><span class="ctitle" id="cTitle"></span><span class="g-seg" id="cSpan"></span><span class="stat" id="cStat"></span></div>
+        <div class="chart-wrap"><canvas id="chart"></canvas></div>
+      </div>
+
+      <div class="g-card">
+        <div class="card-head">주문 <span style="color:var(--dim)">· 손실이 증거금에 닿으면 청산</span></div>
+        <div class="trade">
+          <div class="picker" id="picker"><div class="empty">가격을 기다리는 중…</div></div>
+          <div class="ticket">
+            <div class="coin"><span class="n" id="tCoin">-</span><span class="p" id="tPrice">-</span></div>
+            <div class="dir"><button class="long on" id="tLong">롱</button><button class="short" id="tShort">숏</button></div>
+            <div><div class="lbl"><span>레버리지</span></div><div class="g-seg full" id="tLev"></div></div>
+            <div><div class="lbl"><span>증거금</span><span id="tMarginLbl"></span></div><input type="range" id="tMargin" min="1" max="100" value="20"></div>
+            <div class="preview" id="tPreview"></div>
+            <button class="g-btn primary" id="go">진입</button>
+            <div class="msg" id="msg"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col">
+      <div class="g-card">
+        <div class="card-head">순위<span class="r" id="rankCount"></span></div>
+        <div id="ranking"><div class="empty">아직 참가자가 없어요.</div></div>
+      </div>
+      <div class="g-card">
+        <div class="card-head">라이브</div>
+        <div id="events"><div class="empty">조용해요.</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<button class="g-btn primary" id="follow"></button>
+<div id="toast"><div class="k"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" stroke-width="1.5" d="M2 13c0-3 2.6-5 6.2-5h5.2c2.5 0 4.2 1.3 5.3 3.2.6-1.6 1.8-2.8 3.3-3.2-.3 2-.2 3.9.6 5.6-1.3.2-2.5 0-3.5-.7C18.3 16.8 15.8 19.5 12 19.5H8.5C4.7 19.5 2 16.8 2 13ZM4.6 12.8a1.7 1.7 0 1 0 3.4 0 1.7 1.7 0 1 0-3.4 0Z"/><path d="M7.5 7.5V4.5"/><path d="M7.5 5.2C6.8 4.2 5.8 3.8 4.8 4"/><path d="M7.5 5.2c.7-1 1.7-1.4 2.7-1.2"/></svg> 고래</div><div class="v"></div><div class="s"></div></div>
+
+<div class="modal" id="nickModal"><div class="box">
+  <h3>닉네임</h3>
+  <div class="muted" style="font-size:12.5px; margin-bottom:14px">순위표에 보일 이름이에요. 라운드마다 $10,000 로 시작해요.</div>
+  <div style="display:flex; gap:8px"><input id="nickInput" maxlength="16" placeholder="예: 고래사냥꾼"><button class="g-btn primary" id="nickOk">시작</button></div>
+</div></div>
+
+<div class="modal" id="resultModal"><div class="box">
+  <h3 id="rTitle"></h3>
+  <div class="muted" style="font-size:12.5px" id="rSub"></div>
+  <div class="podium" id="rPodium"></div>
+  <div class="vs" id="rVs"></div>
+  <div class="lbl"><span id="rCurveLbl">우승자 자산 곡선</span><span id="rCurveStat"></span></div>
+  <div><canvas id="rCurve"></canvas></div>
+  <div style="text-align:right; margin-top:14px"><button class="g-btn" id="rClose">다음 라운드로</button></div>
+</div></div>
+
+<script src="lib/markets.js"></script>
+<script src="lib/chart.js"></script>
+<script src="lib/candles.js"></script>
+<script>
+'use strict';
+const API = 'cgi-bin/api/';
+const { coinOf } = window.COIN_MARKETS;
+
+// ── 포맷 ──
+const nf = (d) => new Intl.NumberFormat('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+function fmtPrice(v) { if (v == null) return '-'; if (v >= 1000) return nf(2).format(v); if (v >= 1) return nf(4).format(v); return Number(v.toPrecision(4)).toString(); }
+const fmtMoney = (v) => (v < 0 ? '-$' : '$') + nf(2).format(Math.abs(v));
+function fmtUsd(v) { const a = Math.abs(v); if (a >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return '$' + (v / 1e3).toFixed(1) + 'K'; return '$' + Math.round(v); }
+const fmtPct = (v) => v == null ? '-' : (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+const tone = (v) => !v ? '' : v > 0 ? 'up' : 'down';
+const pad = (n) => String(n).padStart(2, '0');
+const hms = (t) => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const isFut = (name) => /^BINANCE_F\./.test(name);
+const label = (name) => coinOf(name) + (isFut(name) ? ' 선물' : '');
+function segment(el, items, isOn, onPick) {
+  el.innerHTML = '';
+  for (const [value, text] of items) {
+    const b = document.createElement('button'); b.textContent = text;
+    if (isOn(value)) b.className = 'on';
+    b.onclick = () => { onPick(value); segment(el, items, isOn, onPick); renderTicket(); };
+    el.appendChild(b);
+  }
+}
+
+// ── 참가자: 로그인 없이 브라우저에 무작위 id ──
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (_) { return null; } }
+let playerId = store('cc.battle.player');
+if (!playerId || !/^[a-z0-9]{8,32}$/.test(playerId)) {
+  playerId = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => (b % 36).toString(36)).join('');
+  store('cc.battle.player', playerId);
+}
+let nick = store('cc.battle.nick') || '';
+function askNick() {
+  document.getElementById('nickInput').value = nick;
+  document.getElementById('nickModal').classList.add('show');
+  setTimeout(() => document.getElementById('nickInput').focus(), 50);
+}
+document.getElementById('nickOk').onclick = () => {
+  const v = document.getElementById('nickInput').value.trim().slice(0, 16);
+  if (!v) return;
+  nick = v; store('cc.battle.nick', v);
+  document.getElementById('nickModal').classList.remove('show');
+  renderMe();
+};
+document.getElementById('nickInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('nickOk').click(); });
+document.getElementById('me').onclick = askNick;
+function renderMe() { document.getElementById('me').innerHTML = '나 <b>' + esc(nick || '-') + '</b> · 이름 바꾸기'; }
+renderMe();
+if (!nick) askNick();
+
+// ── 상태 ──
+let board = null, game = null, clockSkew = 0;
+const ticket = { name: store('cc.battle.coin') || null, side: 1, lev: 5, pct: 20, follow: 0 };
+
+// ── 코인 고르기: 지금 수집하는 태그 (현물·선물), 24시간 거래대금 순 ──
+const chipEls = {};
+let pickerKey = '';
+function buildPicker() {
+  if (!board) return;
+  const names = Object.keys(board.symbols).sort((a, b) => (board.symbols[b].quoteVolume || 0) - (board.symbols[a].quoteVolume || 0));
+  if (!ticket.name || names.indexOf(ticket.name) < 0) ticket.name = names[0] || null;
+  const key = names.join(',');
+  if (key === pickerKey) return;
+  pickerKey = key;
+  const box = document.getElementById('picker'); box.innerHTML = '';
+  for (const [title, list] of [['현물', names.filter((n) => !isFut(n))], ['선물 (USDⓈ-M 무기한)', names.filter(isFut)]]) {
+    if (!list.length) continue;
+    const h = document.createElement('div'); h.className = 'grp'; h.textContent = title; box.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'chips'; box.appendChild(grid);
+    for (const name of list) {
+      const el = document.createElement('div');
+      el.className = 'chip';
+      el.innerHTML = `<div class="s">${esc(coinOf(name))}</div><div class="c">-</div>`;
+      el.onclick = () => { ticket.name = name; ticket.follow = 0; store('cc.battle.coin', name); renderTicket(); loadChart(); };
+      grid.appendChild(el);
+      chipEls[name] = { el, c: el.querySelector('.c') };
+    }
+  }
+  for (const n in chipEls) if (names.indexOf(n) < 0) delete chipEls[n];
+  loadChart();
+}
+
+// ── 주문표 ──
+segment(document.getElementById('tLev'), [1, 2, 5, 10].map((x) => [x, x + '배']), (v) => v === ticket.lev, (v) => { ticket.lev = v; });
+document.getElementById('tLong').onclick = () => { ticket.side = 1; renderTicket(); };
+document.getElementById('tShort').onclick = () => { ticket.side = -1; renderTicket(); };
+document.getElementById('tMargin').oninput = (e) => { ticket.pct = +e.target.value; renderTicket(); };
+
+function me() { return game && game.players.find((p) => p.id === playerId); }
+function cash() { const m = me(); return m ? m.cash : (game ? game.startCash : 10000); }
+function priceOf(name) { const s = board && board.symbols[name]; return s ? s.price : null; }
+function marginNow() { return Math.floor(cash() * ticket.pct) / 100; }
+
+let lastTicketPrice = null, busy = false;
+function renderTicket() {
+  for (const n in chipEls) chipEls[n].el.classList.toggle('sel', n === ticket.name);
+  document.getElementById('tCoin').textContent = ticket.name ? label(ticket.name) + (ticket.follow ? ' · 고래 따라' : '') : '-';
+  const px = ticket.name ? priceOf(ticket.name) : null;
+  const pEl = document.getElementById('tPrice');
+  if (px != null && lastTicketPrice != null && px !== lastTicketPrice) { pEl.classList.remove('f-up', 'f-down'); void pEl.offsetWidth; pEl.classList.add(px > lastTicketPrice ? 'f-up' : 'f-down'); }
+  lastTicketPrice = px;
+  pEl.textContent = fmtPrice(px);
+  document.getElementById('tLong').classList.toggle('on', ticket.side > 0);
+  document.getElementById('tShort').classList.toggle('on', ticket.side < 0);
+  const m = marginNow();
+  document.getElementById('tMarginLbl').textContent = fmtMoney(m) + ' (' + ticket.pct + '%)';
+  const liq = px ? px * (1 - ticket.side / ticket.lev) : null;
+  document.getElementById('tPreview').innerHTML = px
+    ? `포지션 크기 <b>${fmtMoney(m * ticket.lev)}</b> · 가격 1% 움직이면 <b>${fmtMoney(m * ticket.lev / 100)}</b><br>`
+      + `청산가 <b>${ticket.lev === 1 && ticket.side > 0 ? '없음' : fmtPrice(liq)}</b> (${ticket.side > 0 ? '-' : '+'}${(100 / ticket.lev).toFixed(0)}%)`
+    : '가격을 기다리는 중…';
+  const held = me() && me().positions.some((p) => p.name === ticket.name);
+  const locked = game && game.endsAt - game.now < game.lockBeforeEndMs;
+  const go = document.getElementById('go');
+  go.disabled = !px || held || locked || m < 10 || busy;
+  go.textContent = locked ? '라운드 정산 중' : held ? '이미 포지션이 있어요' : (ticket.side > 0 ? '롱' : '숏') + ' ' + ticket.lev + '배 진입';
+}
+
+function say(text, ok) { const el = document.getElementById('msg'); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); }
+// 요청은 끝까지 기다린다 — 응답 도중 끊으면 서버가 죽을 수 있다 (README)
+async function send(body) {
+  busy = true; renderTicket();
+  try {
+    const r = await fetch(API + 'game', { method: 'POST', body: JSON.stringify(Object.assign({ player: playerId, nick: nick }, body)) }).then((x) => x.json());
+    if (!r.ok) { say(r.reason, false); return null; }
+    return r.data;
+  } catch (e) { say('주문을 보내지 못했어요: ' + e.message, false); return null; }
+  finally { busy = false; renderTicket(); }
+}
+document.getElementById('go').onclick = async () => {
+  if (!nick) { askNick(); return; }
+  const d = await send({ action: 'open', name: ticket.name, side: ticket.side, lev: ticket.lev, margin: marginNow(), follow: ticket.follow });
+  if (d) say(`${label(d.name)} ${ticket.side > 0 ? '롱' : '숏'} ${ticket.lev}배 · 진입가 ${fmtPrice(d.price)}`, true);
+};
+async function closePos(name) {
+  const d = await send({ action: 'close', name: name });
+  if (d) say(`${label(d.name)} 정리 · ${fmtPrice(d.price)} · 손익 ${fmtMoney(d.pnl)}`, d.pnl >= 0);
+}
+
+// ── 화면 갱신 ──
+function renderWallet() {
+  const m = me(), start = game ? game.startCash : 10000;
+  const eq = m ? m.equity : start, ret = (eq / start - 1) * 100;
+  document.getElementById('wEquity').textContent = fmtMoney(eq);
+  document.getElementById('wEquitySub').textContent = m ? `포지션 ${m.positions.length}개` : '아직 진입 전';
+  const r = document.getElementById('wRet'); r.textContent = fmtPct(ret); r.className = 'g-value ' + tone(ret);
+  document.getElementById('wCash').textContent = fmtMoney(m ? m.cash : start);
+  document.getElementById('wCashSub').textContent = '진입할 수 있는 돈';
+  const idx = game ? game.players.findIndex((p) => p.id === playerId) : -1;
+  document.getElementById('wRank').innerHTML = idx >= 0 ? (idx + 1) + '<small>/ ' + game.players.length + '명</small>' : '-';
+  document.getElementById('wRankSub').textContent = idx >= 0 ? '자산 순' : '진입하면 순위에 올라요';
+}
+
+function renderPositions() {
+  const m = me(), box = document.getElementById('positions');
+  if (!m || !m.positions.length) { box.innerHTML = '<div class="empty">아직 없어요. 코인을 고르고 진입하세요.</div>'; return; }
+  let html = '<table><thead><tr><th>코인</th><th>방향</th><th>증거금</th><th>진입가</th><th>현재가</th><th>손익</th><th>수익률</th><th>청산가</th><th></th></tr></thead><tbody>';
+  for (const p of m.positions) {
+    const px = priceOf(p.name), pnl = px ? p.side * (px / p.entry - 1) * p.lev * p.margin : p.pnl;
+    const roe = pnl / p.margin * 100;
+    const dist = px && !(p.lev === 1 && p.side > 0) ? Math.abs(p.liq / px - 1) * 100 : null;
+    html += `<tr><td>${esc(label(p.name))}${p.follow ? ' <span class="muted">· 고래</span>' : ''}</td>`
+      + `<td class="${p.side > 0 ? 'up' : 'down'}">${p.side > 0 ? '롱' : '숏'} ${p.lev}배</td>`
+      + `<td>${fmtMoney(p.margin)}</td><td>${fmtPrice(p.entry)}</td><td>${fmtPrice(px)}</td>`
+      + `<td class="${tone(pnl)}">${fmtMoney(pnl)}</td><td class="${tone(roe)}">${fmtPct(roe)}</td>`
+      + `<td>${dist == null ? '없음' : fmtPrice(p.liq) + ' <span class="' + (dist < 2 ? 'danger' : 'muted') + '">(' + dist.toFixed(1) + '%)</span>'}</td>`
+      + `<td><button class="g-btn" data-close="${esc(p.name)}">정리</button></td></tr>`;
+  }
+  box.innerHTML = html + '</tbody></table>';
+  box.querySelectorAll('[data-close]').forEach((b) => { b.onclick = () => closePos(b.dataset.close); b.disabled = busy; });
+}
+
+function renderRanking() {
+  const box = document.getElementById('ranking'), ps = game ? game.players : [];
+  document.getElementById('rankCount').textContent = ps.length ? ps.length + '명' : '';
+  if (!ps.length) { box.innerHTML = '<div class="empty">아직 참가자가 없어요. 첫 진입을 해 보세요.</div>'; return; }
+  box.innerHTML = ps.slice(0, 50).map((p, i) => `<div class="rank ${p.id === playerId ? 'me' : ''}"><div class="no">${i + 1}</div>`
+    + `<div style="min-width:0"><div class="nick">${esc(p.nick || '익명')}</div><div class="sub">포지션 ${p.open} · 거래 ${p.trades}${p.liquidations ? ' · 청산 ' + p.liquidations : ''}${p.follows ? ' · 고래 ' + p.follows : ''}</div></div>`
+    + `<div class="eq">${fmtMoney(p.equity)}<small class="${tone(p.returnPct)}">${fmtPct(p.returnPct)}</small></div></div>`).join('');
+}
+
+function renderEvents() {
+  const box = document.getElementById('events'), evs = game ? game.events : [];
+  box.innerHTML = evs.length ? evs.map((e) => {
+    let text;
+    if (e.type === 'LIQ') text = `<span class="tag liq">청산</span><b>${esc(e.nick)}</b> ${esc(label(e.name))} ${e.side > 0 ? '롱' : '숏'} ${e.lev}배 · ${fmtMoney(-e.margin)}`;
+    else if (e.type === 'OPEN') text = `<span class="tag${e.follow ? ' whale' : ''}">${e.follow ? '고래 따라' : '진입'}</span><b>${esc(e.nick)}</b> ${esc(label(e.name))} <span class="${e.side > 0 ? 'up' : 'down'}">${e.side > 0 ? '롱' : '숏'} ${e.lev}배</span> ${fmtMoney(e.margin)}`;
+    else if (e.type === 'END') text = `<span class="tag">라운드 끝</span>${e.round} · 우승 <b>${esc(e.winner)}</b> ${fmtPct(e.returnPct)}`;
+    else return '';
+    return `<div class="ev"><span class="t">${hms(e.at)}</span>${text}</div>`;
+  }).join('') : '<div class="empty">조용해요.</div>';
+}
+
+function renderChips() {
+  const held = new Set((me() ? me().positions : []).map((p) => p.name));
+  for (const n in chipEls) {
+    const s = board && board.symbols[n];
+    chipEls[n].c.textContent = s && s.chg1m != null ? fmtPct(s.chg1m) : '-';
+    chipEls[n].c.className = 'c ' + (s ? tone(s.chg1m) : '');
+    chipEls[n].el.classList.toggle('held', held.has(n));
+  }
+}
+
+function renderClock() {
+  if (!game) return;
+  const now = Date.now() + clockSkew, left = Math.max(0, game.endsAt - now), span = game.endsAt - game.startsAt;
+  const el = document.getElementById('clock');
+  el.textContent = pad(Math.floor(left / 60000)) + ':' + pad(Math.floor(left / 1000) % 60);
+  el.classList.toggle('hot', left < 30000);
+  document.getElementById('roundBar').style.width = ((1 - left / span) * 100) + '%';
+  document.getElementById('roundNo').textContent = '라운드 ' + game.round;
+}
+
+// ── 라운드 결과 ──
+let shownResult = +store('cc.battle.lastResult') || 0;
+const curveChart = new PriceChart(document.getElementById('rCurve'), { height: 150, volumeHeight: 0, format: (v) => '$' + nf(0).format(v) });
+async function showResult(last) {
+  shownResult = last.round; store('cc.battle.lastResult', String(last.round));
+  document.getElementById('rTitle').textContent = last.round + ' 라운드 결과';
+  document.getElementById('rSub').textContent = `${last.players}명 참가 · 청산 ${last.liquidations}번`;
+  document.getElementById('rPodium').innerHTML = [1, 0, 2].map((i) => {
+    const p = last.podium[i];
+    return p ? `<div class="p${i + 1}"><div class="no">${i + 1}위</div><div class="nick">${esc(p.nick)}</div><div class="ret ${tone(p.returnPct)}">${fmtPct(p.returnPct)}</div><div class="muted" style="font-size:12px">${fmtMoney(p.equity)}</div></div>` : '<div style="visibility:hidden"></div>';
+  }).join('');
+  const f = last.followers, o = last.others;
+  document.getElementById('rVs').innerHTML = `<div>고래 따라간 ${f.count}명<b class="${tone(f.avgReturnPct)}">${f.avgReturnPct == null ? '-' : fmtPct(f.avgReturnPct)}</b></div><div class="x">vs</div>`
+    + `<div>안 따라간 ${o.count}명<b class="${tone(o.avgReturnPct)}">${o.avgReturnPct == null ? '-' : fmtPct(o.avgReturnPct)}</b></div>`;
+  document.getElementById('resultModal').classList.add('show');
+  try {   // 우승자 자산 곡선 — CC_GAME_EQUITY(TAG) 에 1초마다 쌓인 기록
+    const w = last.podium[0], t0 = performance.now();
+    const r = await fetch(API + 'game?curve=' + last.round + '&player=' + w.id, { cache: 'no-store' }).then((x) => x.json());
+    if (r.ok && r.data.rows.length) {
+      document.getElementById('rCurveLbl').textContent = w.nick + ' 의 자산 곡선';
+      document.getElementById('rCurveStat').textContent = 'CC_GAME_EQUITY · ' + Math.round(performance.now() - t0) + 'ms';
+      curveChart.set({ points: r.data.rows.map((x) => ({ t: x[0], v: x[1] })), whales: [], from: last.endedAt - 600000, to: last.endedAt });
+    }
+  } catch (e) { console.warn('curve', e); }
+}
+document.getElementById('rClose').onclick = () => document.getElementById('resultModal').classList.remove('show');
+
+// ── 고래: 알림 + 따라 타기 ──
+let lastWhaleAt = 0, followTimer = null, toastTimer = null;
+const whales = [];
+function onWhale(w) {
+  if (!chipEls[w.name]) return;   // 지금 고를 수 없는 코인
+  const t = document.getElementById('toast');
+  t.querySelector('.v').innerHTML = `${esc(label(w.name))} <span class="${w.side > 0 ? 'up' : 'down'}">${w.side > 0 ? '매수' : '매도'} ${fmtUsd(w.usd)}</span>`;
+  t.querySelector('.s').textContent = `1초 동안 · 평소의 ${Math.round(w.ratio)}배`;
+  t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
+  const btn = document.getElementById('follow');
+  btn.textContent = `${label(w.name)} ${w.side > 0 ? '롱' : '숏'} 따라 타기`;
+  btn.onclick = () => { ticket.name = w.name; ticket.side = w.side; ticket.follow = 1; btn.classList.remove('show'); renderTicket(); loadChart(); say('고래를 따라 주문표를 채웠어요. 레버리지와 증거금을 정하고 진입하세요.', true); };
+  btn.classList.add('show'); clearTimeout(followTimer); followTimer = setTimeout(() => btn.classList.remove('show'), 12000);
+}
+
+// ── 폴링: live API 하나 (가격·고래·게임 상태) — 서버 버그 때문에 호출 수를 줄인다 (README) ──
+async function poll() {
+  try {
+    const body = await (await fetch(API + 'live?game=1' + (lastWhaleAt ? '&whaleSince=' + lastWhaleAt : ''), { cache: 'no-store' })).json();
+    if (body.ok) {
+      const d = body.data;
+      clockSkew = d.now - Date.now();
+      board = d.board; game = d.game || game;
+      buildPicker();
+      const first = !lastWhaleAt;
+      for (const w of d.whales.slice().reverse()) {
+        whales.unshift(w); if (whales.length > 200) whales.pop();
+        if (!first) onWhale(w);
+        if (w.time > lastWhaleAt) lastWhaleAt = w.time;
+      }
+      if (first && !lastWhaleAt) lastWhaleAt = 1;
+      // 라운드가 끝나는 걸 지켜본 사람에게만 결과를 띄운다
+      if (game && game.last && game.last.round > shownResult) {
+        if (first || !game.last.podium.length) { shownResult = game.last.round; store('cc.battle.lastResult', String(shownResult)); }
+        else showResult(game.last);
+      }
+      renderWallet(); renderPositions(); renderRanking(); renderEvents(); renderChips(); renderTicket(); drawChart();
+    }
+  } catch (e) { console.warn('poll', e); }
+  setTimeout(poll, 1500);
+}
+
+// ── 차트: 고른 코인. 내 포지션이 있으면 진입가·청산가 가로선 ──
+const SPANS = [[60000, '1분'], [5 * 60000, '5분'], [15 * 60000, '15분']];
+let chartSpan = 5 * 60000;
+const chart = new PriceChart(document.getElementById('chart'), { height: 290, volumeHeight: 64, format: fmtPrice, formatMoney: fmtUsd });
+segment(document.getElementById('cSpan'), SPANS, (v) => v === chartSpan, (v) => { chartSpan = v; loadChart(); });
+
+let chartData = null, chartBusy = false, chartAgain = false;
+async function loadChart() {
+  if (!ticket.name) return;
+  if (chartBusy) { chartAgain = true; return; }
+  chartBusy = true;
+  try {
+    const name = ticket.name, span = chartSpan, to = Date.now() + clockSkew, from = to - span;
+    const r = await fetch(API + 'series?name=' + encodeURIComponent(name) + '&from=' + from + '&to=' + to + '&points=' + (span <= 60000 ? 60 : 150), { cache: 'no-store' }).then((x) => x.json());
+    if (!r.ok || name !== ticket.name || span !== chartSpan) return;
+    chartData = { name, from, to, d: r.data };
+    drawChart();
+    const stat = document.getElementById('cStat');
+    stat.innerHTML = CoinCandles.badge(r.data);
+    CoinCandles.wireBadge(stat, r.data, label(name) + ' 차트 쿼리');
+  } catch (e) { console.warn('chart', e); }
+  finally { chartBusy = false; if (chartAgain) { chartAgain = false; loadChart(); } }
+}
+function drawChart() {
+  const name = ticket.name;
+  document.getElementById('cTitle').textContent = name ? label(name) + ' · USDT' : '';
+  if (!chartData || chartData.name !== name) return;
+  const { d, from, to } = chartData;
+  const pos = me() && me().positions.find((p) => p.name === name);
+  const lines = pos ? [{ v: pos.entry, label: (pos.side > 0 ? '롱' : '숏') + ' ' + pos.lev + '배 진입', color: '#f1f1f1', fit: true }]
+    .concat(pos.lev === 1 && pos.side > 0 ? [] : [{ v: pos.liq, label: '청산가', color: '#f0454f', fit: false }]) : null;
+  chart.set(Object.assign(CoinCandles.toChart(d), {
+    whales: whales.filter((w) => w.name === name && w.time >= from && w.time < to).map((w) => ({ t: w.time + 500, v: w.lastPrice, usd: w.usd, side: w.side })),
+    lines: lines, from: from, to: to,
+  }));
+}
+
+setInterval(renderClock, 250);
+setInterval(loadChart, 5000);
+renderTicket();
+poll();
+</script>
+</body>
+</html>
