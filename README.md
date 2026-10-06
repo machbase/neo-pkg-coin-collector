@@ -11,6 +11,8 @@ A machbase-neo package that **collects real-time spot and futures trades and ord
 
 After installation, the collector immediately starts collecting the top 50 coins by trading volume. You can change the selection at any time in the UI.
 
+![DB Inside — collector status and controls in the side panel on the left, the package tab on the right](docs/images/db-inside.png)
+
 ## Requirements
 
 - machbase-neo 8.7.0 or later

@@ -18,7 +18,7 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/$NAME" dist
 rsync -a \
   --exclude '.git' --exclude '.DS_Store' --exclude 'node_modules' \
-  --exclude 'dist' --exclude 'test' --exclude 'pack.sh' \
+  --exclude 'dist' --exclude 'test' --exclude 'pack.sh' --exclude 'docs/images' \
   --exclude 'cgi-bin/conf.d/*.json' --exclude 'data/*.json*' \
   ./ "$STAGE/$NAME/"
 # macOS tar 가 확장 속성(._*) 을 넣지 않게 한다
